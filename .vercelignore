@@ -1,0 +1,15 @@
+# Ignore monorepo directory completely
+meteora-invent/
+meteora-invent/**
+**/meteora-invent/**
+
+# Ignore monorepo-specific files
+**/pnpm-lock.yaml
+**/pnpm-workspace.yaml
+**/turbo.json
+**/.turbo/
+
+# Standard ignores
+node_modules/
+.next/
+.turbo/

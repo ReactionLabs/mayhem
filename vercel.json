@@ -1,6 +1,5 @@
 {
-  "buildCommand": "cd ../.. && pnpm install && pnpm --filter @meteora-invent/scaffold/fun-launch build",
-  "installCommand": "cd ../.. && pnpm install",
+  "buildCommand": "npm run build",
+  "installCommand": "npm install --ignore-scripts",
   "framework": "nextjs"
 }
-
