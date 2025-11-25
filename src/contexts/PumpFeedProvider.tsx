@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { usePumpStream } from './PumpStreamProvider';
 import { Launchpad, Pool } from '@/components/Explore/types';
+import { saveTokenToCSV, TokenRecord } from '@/lib/csv-tracker';
 
 const STORAGE_KEY = 'pump_feed_cache_v1';
 const MAX_POOL_CACHE = 60;
@@ -67,16 +68,43 @@ export const PumpFeedProvider = ({ children }: { children: React.ReactNode }) =>
   useEffect(() => {
     if (!lastCreateEvent) return;
 
+    const timestamp = new Date().toISOString();
+    // Initial buy-in is the SOL amount used to create the token (initialBuy field)
+    const initialBuyInSOL = lastCreateEvent.initialBuy || 0;
+    const initialBuyInUSD = initialBuyInSOL * 200; // Assuming 1 SOL = $200
+    const initialMarketCapSOL = lastCreateEvent.marketCapSol || 0;
+    const initialMarketCapUSD = initialMarketCapSOL * 200;
+
+    // Save to CSV for analytics
+    const csvRecord: TokenRecord = {
+      timestamp,
+      name: lastCreateEvent.name || 'Unknown',
+      ticker: lastCreateEvent.symbol || 'UNKNOWN',
+      contractAddress: lastCreateEvent.mint,
+      initialBuyInSOL,
+      initialBuyInUSD,
+      initialMarketCapSOL,
+      initialMarketCapUSD,
+      metadataUri: lastCreateEvent.uri,
+    };
+
+    // Save asynchronously - don't block UI
+    saveTokenToCSV(csvRecord).catch((error) => {
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('Failed to save token to CSV:', error);
+      }
+    });
+
     const newPool: Pool = {
       id: lastCreateEvent.mint,
       chain: 'solana',
       dex: 'pump.fun',
       type: 'pump',
-      createdAt: new Date().toISOString(),
+      createdAt: timestamp,
       bondingCurve: 0,
       volume24h: 0,
       isUnreliable: false,
-      updatedAt: new Date().toISOString(),
+      updatedAt: timestamp,
       baseAsset: {
         id: lastCreateEvent.mint,
         name: lastCreateEvent.name,
@@ -84,8 +112,8 @@ export const PumpFeedProvider = ({ children }: { children: React.ReactNode }) =>
         icon: lastCreateEvent.uri,
         decimals: 6,
         tokenProgram: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
-        mcap: lastCreateEvent.marketCapSol * 200,
-        liquidity: lastCreateEvent.vSolInBondingCurve * 200,
+        mcap: initialMarketCapUSD,
+        liquidity: initialBuyInUSD,
         usdPrice: 0,
         launchpad: Launchpad.PUMPFUN,
       },

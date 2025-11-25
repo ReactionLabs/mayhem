@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import { cn } from '@/lib/utils';
 import { 
   Home, 
-  Rocket, 
+  FlaskConical, 
   Wallet, 
   Settings, 
   Menu,
@@ -16,7 +16,7 @@ import { Button } from '../ui/button';
 
 const navItems = [
   { href: '/', label: 'Explore', icon: Home },
-  { href: '/create-pool', label: 'Launchpad', icon: Rocket },
+  { href: '/create-pool', label: 'Studio', icon: FlaskConical },
   { href: '/portfolio', label: 'Portfolio', icon: Wallet },
 ];
 

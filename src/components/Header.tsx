@@ -34,12 +34,40 @@ export const Header = () => {
     setShowModal(true);
   };
 
-  const handleSearch = (e: React.FormEvent) => {
+  const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (globalSearch.trim()) {
-      // Assume it's a mint address and navigate to token page
-      router.push(`/token/${globalSearch.trim()}`);
-      setGlobalSearch(''); // Clear after search
+    const searchTerm = globalSearch.trim();
+    if (!searchTerm) return;
+
+    try {
+      // Check if it looks like a Solana address (base58, 32-44 chars)
+      const isLikelyAddress = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(searchTerm);
+      
+      if (isLikelyAddress) {
+        // Direct navigation for addresses
+        router.push(`/token/${searchTerm}`);
+        setGlobalSearch('');
+        return;
+      }
+
+      // For name searches, try to find token
+      // First try searching via API
+      const response = await fetch(`/api/search-token?q=${encodeURIComponent(searchTerm)}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.token) {
+          router.push(`/token/${data.token.baseAsset.id}`);
+          setGlobalSearch('');
+          return;
+        }
+      }
+
+      // If API search fails, show error
+      toast.error('Token not found. Please use contract address (CA) or token name.');
+    } catch (error) {
+      // Fallback: try direct navigation anyway
+      router.push(`/token/${searchTerm}`);
+      setGlobalSearch('');
     }
   };
 
@@ -51,111 +79,115 @@ export const Header = () => {
   };
 
   useEffect(() => {
-    // Wrap everything in try-catch to prevent any errors from escaping
-    try {
-      let cancelled = false;
-      let timeoutId: NodeJS.Timeout | null = null;
-      
-      // Only run in browser
-      if (typeof window === 'undefined') {
-        return;
-      }
-      
-      // Early return if balance fetch is disabled (due to previous errors)
-      if (!balanceFetchEnabled) {
-        setSolBalance(null);
-        return;
-      }
-      
-      // Early return if no wallet connected
-      if (!publicKey) {
-        setSolBalance(null);
-        return;
-      }
-      
-      // Check if connection is available and valid
-      if (!connection) {
-        setSolBalance(null);
-        return;
-      }
-      
-      // Verify connection has getBalance method
-      if (typeof connection.getBalance !== 'function') {
-        setSolBalance(null);
-        return;
-      }
-      
-      // Add a delay to ensure connection is fully initialized
-      timeoutId = setTimeout(async () => {
-        if (cancelled) return;
-        
+    // Completely disable balance fetching if it's been disabled due to errors
+    if (!balanceFetchEnabled) {
+      return;
+    }
+
+    // Only run in browser
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    // Early return if no wallet connected
+    if (!publicKey) {
+      setSolBalance(null);
+      return;
+    }
+
+    // Check if connection is available and valid
+    if (!connection) {
+      setSolBalance(null);
+      return;
+    }
+
+    // Verify connection has getBalance method
+    if (typeof connection.getBalance !== 'function') {
+      setSolBalance(null);
+      return;
+    }
+
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let mounted = true;
+
+    // Wrap the entire async operation
+    const fetchBalance = async () => {
+      // Add delay to ensure connection is ready
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      if (cancelled || !mounted) return;
+
+      try {
+        // Validate publicKey
+        let pubkey: PublicKey;
         try {
-          // Validate publicKey before using
-          let pubkey: PublicKey;
-          try {
-            pubkey = new PublicKey(publicKey);
-          } catch {
-            // Invalid public key
-            if (!cancelled) setSolBalance(null);
-            return;
-          }
-          
-          // Double-check connection is still valid
-          if (!connection || typeof connection.getBalance !== 'function') {
-            if (!cancelled) setSolBalance(null);
-            return;
-          }
-          
-          // Fetch balance with timeout and error handling
-          try {
-            const balanceLamports = await Promise.race([
-              connection.getBalance(pubkey, 'confirmed'),
-              new Promise<number>((_, reject) => 
-                setTimeout(() => reject(new Error('Balance fetch timeout')), 8000)
-              )
-            ]) as number;
-            
-            // Only update if not cancelled and result is valid
-            if (!cancelled && typeof balanceLamports === 'number' && balanceLamports >= 0) {
-              setSolBalance(balanceLamports / LAMPORTS_PER_SOL);
-            } else if (!cancelled) {
-              setSolBalance(null);
-            }
-          } catch (fetchError: unknown) {
-            // Silently fail - balance display is optional
-            // This catches RPC errors, network errors, timeouts, etc.
-            // If we get repeated errors, disable balance fetching to prevent console spam
-            if (!cancelled) {
-              setSolBalance(null);
-              // Disable balance fetching if we get network errors
-              // This prevents repeated failed attempts
-              if (fetchError instanceof Error && fetchError.message.includes('fetch')) {
-                setBalanceFetchEnabled(false);
-              }
-            }
-          }
-        } catch (err: unknown) {
-          // Catch any other errors
-          if (!cancelled) {
+          pubkey = new PublicKey(publicKey);
+        } catch {
+          if (mounted && !cancelled) {
             setSolBalance(null);
           }
+          return;
         }
-      }, 500); // Increased delay to ensure connection is ready
-      
-      return () => {
-        cancelled = true;
-        if (timeoutId) {
-          clearTimeout(timeoutId);
+
+        // Double-check connection
+        if (!connection || typeof connection.getBalance !== 'function') {
+          if (mounted && !cancelled) {
+            setSolBalance(null);
+          }
+          return;
         }
-      };
-    } catch (err: unknown) {
-      // Catch any synchronous errors in the useEffect itself
-      setSolBalance(null);
-      return () => {
-        // Cleanup function
-      };
-    }
-  }, [publicKey, connection]);
+
+        // Fetch with timeout
+        try {
+          const balancePromise = connection.getBalance(pubkey, 'confirmed');
+          const timeoutPromise = new Promise<never>((_, reject) => 
+            setTimeout(() => reject(new Error('Timeout')), 5000)
+          );
+
+          const balanceLamports = await Promise.race([balancePromise, timeoutPromise]);
+
+          if (mounted && !cancelled && typeof balanceLamports === 'number' && balanceLamports >= 0) {
+            setSolBalance(balanceLamports / LAMPORTS_PER_SOL);
+          } else if (mounted && !cancelled) {
+            setSolBalance(null);
+          }
+        } catch (error: unknown) {
+          // Completely suppress all errors - balance is optional
+          if (mounted && !cancelled) {
+            setSolBalance(null);
+            // Disable on any error to prevent repeated failures
+            setBalanceFetchEnabled(false);
+          }
+        }
+      } catch (error: unknown) {
+        // Catch any unexpected errors
+        if (mounted && !cancelled) {
+          setSolBalance(null);
+          setBalanceFetchEnabled(false);
+        }
+      }
+    };
+
+    // Start the fetch
+    timeoutId = setTimeout(() => {
+      fetchBalance().catch(() => {
+        // Silently catch any promise rejections
+        if (mounted && !cancelled) {
+          setSolBalance(null);
+          setBalanceFetchEnabled(false);
+        }
+      });
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      mounted = false;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, [publicKey, connection, balanceFetchEnabled]);
 
   // Price fetch disabled to prevent fetch errors
   // Will show SOL balance only
@@ -189,7 +221,7 @@ export const Header = () => {
         <Input 
           value={globalSearch}
           onChange={(e) => setGlobalSearch(e.target.value)}
-          placeholder="Search by Token Mint Address..." 
+          placeholder="Search by name or contract address (CA)..." 
           className="pl-9 bg-secondary/50 border-none h-10 w-full focus-visible:ring-1 focus-visible:ring-primary"
         />
       </form>

@@ -11,7 +11,7 @@ import BN from 'bn.js';
 import { PumpFunSDK } from '@/lib/pump-fun';
 import { useUnifiedWalletContext, useWallet } from '@jup-ag/wallet-adapter';
 import { toast } from 'sonner';
-import { ImageIcon, Clock, TrendingUp, BarChart3 } from 'lucide-react';
+import { ImageIcon, Clock, TrendingUp, BarChart3, Settings, Coins, Lock, Unlock, FlaskConical } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/Checkbox';
 
@@ -37,6 +37,12 @@ const poolSchema = z.object({
     .url({ message: 'Please enter a valid URL' })
     .optional()
     .or(z.literal('')),
+  // Advanced Tokenomics
+  totalSupply: z.number().min(1000).optional().default(1_000_000_000),
+  decimals: z.number().min(0).max(9).optional().default(6),
+  revokeMintAuthority: z.boolean().optional().default(true),
+  revokeFreezeAuthority: z.boolean().optional().default(true),
+  initialLiquidity: z.number().min(0).optional().default(0),
 });
 
 interface FormValues {
@@ -48,6 +54,12 @@ interface FormValues {
   website?: string;
   twitter?: string;
   telegram?: string;
+  // Advanced Tokenomics
+  totalSupply: number;
+  decimals: number;
+  revokeMintAuthority: boolean;
+  revokeFreezeAuthority: boolean;
+  initialLiquidity: number;
   // Autosell settings
   autosellEnabled: boolean;
   autosellMarketCap?: number;
@@ -235,6 +247,12 @@ export default function CreatePool() {
       website: '',
       twitter: '',
       telegram: '',
+      // Advanced Tokenomics defaults
+      totalSupply: 1_000_000_000,
+      decimals: 6,
+      revokeMintAuthority: true,
+      revokeFreezeAuthority: true,
+      initialLiquidity: 0,
     } as FormValues,
     onSubmit: async ({ value }) => {
       try {
@@ -300,7 +318,7 @@ export default function CreatePool() {
         
         // 3. Create Pump.fun Launch Transaction via PumpPortal API
         // Note: PumpPortal allows creating a transaction bundle for launch
-        toast.loading("Constructing launch transaction...");
+            toast.loading("Crafting your token...");
 
         const response = await fetch(`https://pumpportal.fun/api/trade-local`, {
             method: "POST",
@@ -355,13 +373,13 @@ export default function CreatePool() {
             
             // Request User Signature for main transaction
             toast.dismiss();
-            toast.loading("Please sign the launch transaction...");
+            toast.loading("Please sign the transaction...");
             
             // Send main launch transaction
             await sendTransaction(tx, connection);
             
             toast.dismiss();
-            toast.success("Launch Successful!");
+            toast.success("Deployment Successful! Your token is live.");
             setCreatedTokenMint(mintAddress);
             setPoolCreated(true);
         } else {
@@ -404,17 +422,22 @@ export default function CreatePool() {
   return (
     <>
       <Head>
-        <title>Launch on Pump.fun - Fun Launch</title>
+        <title>Studio - Mayhem</title>
       </Head>
 
-      <div className="min-h-screen bg-background text-foreground transition-colors duration-300">
+      <div className="min-h-screen bg-gradient-to-br from-background via-background to-neutral-950/50 text-foreground transition-colors duration-300">
         <Header />
 
-        <main className="container mx-auto px-4 py-10">
+        <main className="container mx-auto px-4 py-10 max-w-7xl">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10">
             <div>
-              <h1 className="text-4xl font-bold mb-2 tracking-tight">Launch on Pump.fun</h1>
-              <p className="text-muted-foreground">Create a new token and launch instantly on the bonding curve.</p>
+              <div className="flex items-center gap-3 mb-2">
+                <FlaskConical className="h-8 w-8 text-primary" />
+                <h1 className="text-4xl font-bold tracking-tight">Studio</h1>
+              </div>
+              <p className="text-muted-foreground ml-11">
+                Your private workspace to craft the perfect financial concoction. Full control over tokenomics.
+              </p>
             </div>
           </div>
 
@@ -431,8 +454,11 @@ export default function CreatePool() {
                   }}
                   className="space-y-8"
                 >
-                  <div className="bg-card rounded-xl p-8 border border-border shadow-sm">
-                    <h2 className="text-2xl font-bold mb-6">Token Details</h2>
+                  <div className="bg-card/50 backdrop-blur-sm rounded-xl p-8 border border-border/50 shadow-lg">
+                    <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
+                      <Coins className="h-5 w-5 text-primary" />
+                      Token Details
+                    </h2>
 
                     <div className="grid grid-cols-1 gap-6">
                       <div className="space-y-4">
@@ -559,8 +585,135 @@ export default function CreatePool() {
                     </div>
                   </div>
 
-                  <div className="bg-card rounded-xl p-8 border border-border shadow-sm">
-                     <h2 className="text-2xl font-bold mb-4">Launch Configuration</h2>
+                  {/* Advanced Tokenomics Section */}
+                  <div className="bg-card/50 backdrop-blur-sm rounded-xl p-8 border border-border/50 shadow-lg">
+                    <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
+                      <Settings className="h-5 w-5 text-primary" />
+                      Advanced Tokenomics
+                    </h2>
+                    <p className="text-sm text-muted-foreground mb-6">
+                      Fine-tune your token's economic parameters. Craft the perfect financial structure.
+                    </p>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Total Supply */}
+                      <div>
+                        <label className="block text-sm font-medium text-muted-foreground mb-1">
+                          Total Supply
+                        </label>
+                        {form.Field({
+                          name: 'totalSupply',
+                          children: (field) => (
+                            <input
+                              type="number"
+                              min="1000"
+                              step="1000000"
+                              className="w-full p-3 bg-background/50 border border-input rounded-lg focus:ring-2 focus:ring-primary"
+                              value={field.state.value}
+                              onChange={(e) => field.handleChange(Number(e.target.value))}
+                              placeholder="1,000,000,000"
+                            />
+                          ),
+                        })}
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Total tokens to mint (default: 1B)
+                        </p>
+                      </div>
+
+                      {/* Decimals */}
+                      <div>
+                        <label className="block text-sm font-medium text-muted-foreground mb-1">
+                          Decimals
+                        </label>
+                        {form.Field({
+                          name: 'decimals',
+                          children: (field) => (
+                            <input
+                              type="number"
+                              min="0"
+                              max="9"
+                              className="w-full p-3 bg-background/50 border border-input rounded-lg focus:ring-2 focus:ring-primary"
+                              value={field.state.value}
+                              onChange={(e) => field.handleChange(Number(e.target.value))}
+                              placeholder="6"
+                            />
+                          ),
+                        })}
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Token precision (0-9, default: 6)
+                        </p>
+                      </div>
+
+                      {/* Mint Authority */}
+                      <div className="flex items-center space-x-3 p-4 bg-background/30 rounded-lg border border-border/50">
+                        {form.Field({
+                          name: 'revokeMintAuthority',
+                          children: (field) => (
+                            <>
+                              <Checkbox
+                                id="revoke-mint"
+                                checked={field.state.value}
+                                onCheckedChange={(checked) => field.handleChange(checked === true)}
+                              />
+                              <div className="flex-1">
+                                <label htmlFor="revoke-mint" className="text-sm font-medium cursor-pointer flex items-center gap-2">
+                                  {field.state.value ? (
+                                    <Lock className="h-4 w-4 text-green-500" />
+                                  ) : (
+                                    <Unlock className="h-4 w-4 text-yellow-500" />
+                                  )}
+                                  Revoke Mint Authority
+                                </label>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  {field.state.value 
+                                    ? 'Token supply is locked (recommended for trust)' 
+                                    : 'You can mint more tokens later (less trust)'}
+                                </p>
+                              </div>
+                            </>
+                          ),
+                        })}
+                      </div>
+
+                      {/* Freeze Authority */}
+                      <div className="flex items-center space-x-3 p-4 bg-background/30 rounded-lg border border-border/50">
+                        {form.Field({
+                          name: 'revokeFreezeAuthority',
+                          children: (field) => (
+                            <>
+                              <Checkbox
+                                id="revoke-freeze"
+                                checked={field.state.value}
+                                onCheckedChange={(checked) => field.handleChange(checked === true)}
+                              />
+                              <div className="flex-1">
+                                <label htmlFor="revoke-freeze" className="text-sm font-medium cursor-pointer flex items-center gap-2">
+                                  {field.state.value ? (
+                                    <Lock className="h-4 w-4 text-green-500" />
+                                  ) : (
+                                    <Unlock className="h-4 w-4 text-yellow-500" />
+                                  )}
+                                  Revoke Freeze Authority
+                                </label>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  {field.state.value 
+                                    ? 'Accounts cannot be frozen (recommended)' 
+                                    : 'You can freeze accounts later'}
+                                </p>
+                              </div>
+                            </>
+                          ),
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Launch Configuration */}
+                  <div className="bg-card/50 backdrop-blur-sm rounded-xl p-8 border border-border/50 shadow-lg">
+                     <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+                       <TrendingUp className="h-5 w-5 text-primary" />
+                       Launch Configuration
+                     </h2>
                      <div className="mb-6">
                       <label className="block text-sm font-medium text-muted-foreground mb-1">Initial Buy Amount (SOL)</label>
                       {form.Field({
@@ -570,7 +723,7 @@ export default function CreatePool() {
                             type="number"
                             min="0"
                             step="0.01"
-                            className="w-full p-3 bg-background border border-input rounded-lg"
+                            className="w-full p-3 bg-background/50 border border-input rounded-lg focus:ring-2 focus:ring-primary"
                             value={field.state.value}
                             onChange={(e) => field.handleChange(Number(e.target.value))}
                           />
@@ -580,7 +733,7 @@ export default function CreatePool() {
                     </div>
                   </div>
                   
-                  <div className="bg-card rounded-xl p-8 border border-border shadow-sm">
+                  <div className="bg-card/50 backdrop-blur-sm rounded-xl p-8 border border-border/50 shadow-lg">
                     <h2 className="text-2xl font-bold mb-6">Socials (Optional)</h2>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                          {['website', 'twitter', 'telegram'].map((social) => (
@@ -640,15 +793,21 @@ export default function CreatePool() {
 
                  {/* Estimated Tokens */}
                  {form.getFieldValue('initialBuyAmount') > 0 && (
-                   <div className="bg-secondary/20 rounded-xl p-6 border border-border/50">
-                     <h3 className="text-sm font-bold mb-3 text-foreground">Estimated Tokens</h3>
+                   <div className="bg-card/50 backdrop-blur-sm rounded-xl p-6 border border-border/50 shadow-lg">
+                     <h3 className="text-sm font-bold mb-3 text-foreground flex items-center gap-2">
+                       <TrendingUp className="h-4 w-4 text-primary" />
+                       Estimated Tokens
+                     </h3>
                      <EstimatedTokensDisplay initialBuyAmount={form.getFieldValue('initialBuyAmount') || 0} />
                    </div>
                  )}
 
                  {/* Autosell Settings */}
-                 <div className="bg-secondary/20 rounded-xl p-6 border border-border/50">
-                   <h3 className="text-sm font-bold mb-3 text-foreground">Autosell Settings</h3>
+                 <div className="bg-card/50 backdrop-blur-sm rounded-xl p-6 border border-border/50 shadow-lg">
+                   <h3 className="text-sm font-bold mb-3 text-foreground flex items-center gap-2">
+                     <BarChart3 className="h-4 w-4 text-primary" />
+                     Autosell Settings
+                   </h3>
                    <AutosellSettings form={form} />
                  </div>
               </div>
@@ -674,7 +833,7 @@ const SubmitButton = ({ isSubmitting }: { isSubmitting: boolean }) => {
 
   return (
     <Button className="w-full py-6 text-lg font-bold bg-green-500 hover:bg-green-600 text-white" type="submit" disabled={isSubmitting}>
-      {isSubmitting ? 'Launching...' : '🚀 Launch on Pump.fun'}
+      {isSubmitting ? 'Crafting...' : '✨ Deploy from Studio'}
     </Button>
   );
 };
@@ -683,9 +842,9 @@ const PoolCreationSuccess = ({ mint }: { mint: string }) => {
   return (
     <div className="bg-card rounded-xl p-12 border border-border shadow-sm text-center max-w-2xl mx-auto">
         <div className="text-6xl mb-4">🎉</div>
-        <h2 className="text-3xl font-bold mb-4">Token Launched!</h2>
+        <h2 className="text-3xl font-bold mb-4">Concoction Complete!</h2>
         <p className="text-muted-foreground mb-8">
-          Your token is now live on Pump.fun bonding curve.
+          Your financial masterpiece is now live on Pump.fun bonding curve.
         </p>
         <div className="flex gap-4 justify-center">
           <Link href={`/token/${mint}`} className="bg-primary text-primary-foreground px-8 py-4 rounded-xl font-bold hover:opacity-90">
