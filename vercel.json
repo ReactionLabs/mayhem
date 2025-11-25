@@ -1,7 +1,6 @@
 {
-  "buildCommand": "cd meteora-invent && pnpm install && pnpm --filter @meteora-invent/scaffold/fun-launch build",
-  "installCommand": "cd meteora-invent && pnpm install",
-  "outputDirectory": "meteora-invent/scaffolds/fun-launch/.next",
+  "buildCommand": "cd ../.. && pnpm install && pnpm --filter @meteora-invent/scaffold/fun-launch build",
+  "installCommand": "cd ../.. && pnpm install",
   "framework": "nextjs"
 }
 
