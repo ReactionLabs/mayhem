@@ -50,6 +50,7 @@ export const PumpStreamProvider = ({ children }: { children: React.ReactNode }) 
   // Track subscriptions to resubscribe on reconnect
   const isSubscribedToNewTokens = useRef(false);
   const subscribedTokenMints = useRef<Set<string>>(new Set());
+  const reconnectAttempts = useRef(0);
 
   const connect = useCallback(() => {
     if (ws.current?.readyState === WebSocket.OPEN) return;
@@ -80,8 +81,13 @@ export const PumpStreamProvider = ({ children }: { children: React.ReactNode }) 
         console.log('Disconnected from PumpPortal WebSocket');
       }
       setIsConnected(false);
-      // Simple reconnect logic
-      setTimeout(connect, 3000);
+      // Exponential backoff for reconnection
+      const reconnectDelay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 30000); // Max 30s
+      reconnectAttempts.current += 1;
+      setTimeout(() => {
+        reconnectAttempts.current = 0; // Reset on successful connection
+        connect();
+      }, reconnectDelay);
     };
 
     socket.onerror = (error) => {

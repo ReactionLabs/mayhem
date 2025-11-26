@@ -4,13 +4,43 @@ import { PositionsTable } from '@/components/Dashboard/PositionsTable';
 import { ExploreColumn } from '@/components/Explore/ExploreColumn';
 import { ExploreTab } from '@/components/Explore/types';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { TokenChart } from '@/components/TokenChart/TokenChart';
 import { TokenChartProvider } from '@/contexts/TokenChartProvider';
 import { DataStreamProvider } from '@/contexts/DataStreamProvider';
+import { useRouter } from 'next/router';
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [activeMint, setActiveMint] = useState<string | undefined>(undefined);
+  const [activeTab, setActiveTab] = useState<string>('chart');
+
+  // Sync router query with activeMint so chart can read it
+  useEffect(() => {
+    if (activeMint) {
+      router.replace(
+        {
+          pathname: router.pathname,
+          query: { ...router.query, tokenId: activeMint },
+        },
+        undefined,
+        { shallow: true }
+      );
+      // Switch to chart tab when token is selected
+      setActiveTab('chart');
+    } else {
+      // Remove tokenId from query if no active mint
+      const { tokenId, ...restQuery } = router.query;
+      router.replace(
+        {
+          pathname: router.pathname,
+          query: restQuery,
+        },
+        undefined,
+        { shallow: true }
+      );
+    }
+  }, [activeMint, router]);
 
   return (
     <DataStreamProvider>
@@ -23,7 +53,7 @@ export default function DashboardPage() {
           {/* Chart / Main Area */}
           <div className="flex-1 min-h-0 flex flex-col">
              {/* Tabbed Interface for Main View */}
-             <Tabs defaultValue="chart" className="flex-1 flex flex-col">
+             <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
                <div className="border-b border-border px-4 pt-2">
                  <TabsList className="bg-transparent p-0 h-auto space-x-4">
                    <TabsTrigger 
@@ -45,14 +75,7 @@ export default function DashboardPage() {
                  {activeMint ? (
                     <div className="flex-1 h-full bg-background">
                         <TokenChartProvider>
-                            {/* Note: TokenChart typically reads ID from URL query, we might need to adapt it to accept a prop or we push router state */}
-                            <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                                {/* Placeholder until Chart component accepts direct props, or we sync URL */}
-                                <div className="text-center">
-                                    <p className="mb-2">Active Token: <span className="font-mono font-bold text-primary">{activeMint}</span></p>
-                                    <p className="text-xs opacity-50">(Chart integration pending prop update)</p>
-                                </div>
-                            </div>
+                            <TokenChart renderingId={activeMint} />
                         </TokenChartProvider>
                     </div>
                  ) : (
@@ -67,7 +90,7 @@ export default function DashboardPage() {
 
                <TabsContent value="scanner" className="flex-1 m-0 overflow-hidden flex flex-col">
                   {/* Pass setActiveMint to ExploreColumn so clicking a row selects it */}
-                  <ExploreColumn tab={ExploreTab.NEW} />
+                  <ExploreColumn tab={ExploreTab.NEW} onSelectToken={setActiveMint} />
                </TabsContent>
              </Tabs>
           </div>

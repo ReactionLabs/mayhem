@@ -16,7 +16,7 @@ interface WatchlistSidebarProps {
     onSelectToken?: (mint: string) => void;
 }
 
-export const WatchlistSidebar: React.FC<WatchlistSidebarProps> = memo(({ onSelectToken }) => {
+const WatchlistSidebarComponent: React.FC<WatchlistSidebarProps> = ({ onSelectToken }) => {
   const { 
     subscribeNewTokens, 
     subscribeTokenTrades, 
@@ -118,3 +118,5 @@ export const WatchlistSidebar: React.FC<WatchlistSidebarProps> = memo(({ onSelec
     </div>
   );
 };
+
+export const WatchlistSidebar = memo(WatchlistSidebarComponent);

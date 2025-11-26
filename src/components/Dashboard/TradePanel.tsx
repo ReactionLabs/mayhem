@@ -11,6 +11,8 @@ import { useConnection } from '@jup-ag/wallet-adapter';
 import { LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
 import BN from 'bn.js';
 import { PumpFunSDK } from '@/lib/pump-fun';
+import { useWalletManager } from '@/contexts/WalletManagerContext';
+import { MultiWalletSelector } from '@/components/WalletManager/MultiWalletSelector';
 
 // We need to know WHICH token we are trading. 
 // For a general dashboard, this might be dynamic based on selection.
@@ -23,7 +25,7 @@ type TradePanelProps = {
 export const TradePanel: React.FC<TradePanelProps> = memo(({ activeMint }) => {
   const { publicKey, signTransaction } = useWallet();
   const { connection } = useConnection();
-  const [selectedWallet, setSelectedWallet] = useState('main');
+  const [selectedWallet, setSelectedWallet] = useState<string | null>(null);
   const [amount, setAmount] = useState('0.1');
   const [tradeType, setTradeType] = useState<'buy'|'sell'>('buy');
   const [isLoading, setIsLoading] = useState(false);
@@ -40,33 +42,68 @@ export const TradePanel: React.FC<TradePanelProps> = memo(({ activeMint }) => {
   const [autoSellTarget, setAutoSellTarget] = useState('100');
   const [autoSellStop, setAutoSellStop] = useState('30');
 
-  // Mock wallets - in real app this comes from your unified hook or local storage
-  // TODO: Replace with real UseWallets hook
-  const [myWallets, setMyWallets] = useState([
-    { id: 'main', label: 'Main Wallet', address: publicKey?.toBase58(), balance: 0, type: 'connected' },
-  ]);
+  const { wallets, activeWallets, refreshBalances } = useWalletManager();
+  
+  // Get active wallets for trading
+  const activeWalletsList = useMemo(() => 
+    wallets.filter(w => activeWallets.includes(w.id)),
+    [wallets, activeWallets]
+  );
 
-  useEffect(() => {
-    if (publicKey) {
-        setMyWallets(prev => prev.map(w => w.id === 'main' ? { ...w, address: publicKey.toBase58() } : w));
-    }
-  }, [publicKey]);
+  // Calculate total balance of active wallets
+  const totalActiveBalance = useMemo(() => 
+    activeWalletsList.reduce((sum, w) => sum + (w.balance || 0), 0),
+    [activeWalletsList]
+  );
 
-  // Fetch Balance for selected wallet
+  // Ensure selected wallet stays in sync with active list
   useEffect(() => {
-    const currentWallet = myWallets.find(w => w.id === selectedWallet);
-    if (currentWallet?.address && connection) {
-        connection.getBalance(new PublicKey(currentWallet.address)).then(bal => {
-            setBalance(bal / LAMPORTS_PER_SOL);
-            // Update wallet list state too
-            setMyWallets(prev => prev.map(w => w.id === selectedWallet ? { ...w, balance: bal / LAMPORTS_PER_SOL } : w));
-        }).catch(e => {
-          if (process.env.NODE_ENV === 'development') {
-            console.error("Failed to fetch balance", e);
-          }
-        });
+    if (!activeWalletsList.length) {
+      setSelectedWallet(null);
+      return;
     }
-  }, [selectedWallet, connection, myWallets.length]); // Re-run if wallets change
+    if (!selectedWallet || !activeWalletsList.some(w => w.id === selectedWallet)) {
+      setSelectedWallet(activeWalletsList[0].id);
+    }
+  }, [activeWalletsList, selectedWallet]);
+
+  const currentWallet = useMemo(
+    () =>
+      activeWalletsList.find(w => w.id === selectedWallet) ||
+      activeWalletsList[0] ||
+      null,
+    [activeWalletsList, selectedWallet]
+  );
+
+  // Fetch balance for the current wallet
+  useEffect(() => {
+    if (!currentWallet || !currentWallet.address || !connection) {
+      setBalance(null);
+      return;
+    }
+
+    let cancelled = false;
+    const fetchBalance = async () => {
+      try {
+        const lamports = await connection.getBalance(new PublicKey(currentWallet.address));
+        if (!cancelled) {
+          setBalance(lamports / LAMPORTS_PER_SOL);
+        }
+      } catch (e) {
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Failed to fetch balance', e);
+        }
+        if (!cancelled) {
+          setBalance(null);
+        }
+      }
+    };
+
+    fetchBalance();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentWallet?.address, connection]);
 
   // Load persisted auto-sell settings
   useEffect(() => {
@@ -196,9 +233,15 @@ export const TradePanel: React.FC<TradePanelProps> = memo(({ activeMint }) => {
         toast.error("Select a token from the scanner/chart first.");
         return;
     }
-    
-    // If using Main Wallet (Connected via Adapter)
-    if (selectedWallet === 'main') {
+
+    if (!currentWallet) {
+      toast.error('Activate at least one trading wallet.');
+      return;
+    }
+
+    const isConnectedWallet = currentWallet.type === 'connected';
+
+    if (isConnectedWallet) {
         if (!publicKey || !signTransaction) {
             toast.error("Please connect your main wallet.");
             return;
@@ -238,8 +281,7 @@ export const TradePanel: React.FC<TradePanelProps> = memo(({ activeMint }) => {
         }
     } else {
         // Hot Wallet Logic (stored key)
-        // Retrieve key from local storage/state and use it
-        toast.info("Bot wallet trading coming in next update.");
+        toast.info(`Bot wallet (${currentWallet.label}) trading coming in next update.`);
     }
   };
 
@@ -256,33 +298,22 @@ export const TradePanel: React.FC<TradePanelProps> = memo(({ activeMint }) => {
         </Button>
       </div>
 
-      {/* Wallet Selector */}
-      <div className="p-4 pb-0">
-        <label className="text-[10px] text-muted-foreground uppercase font-bold mb-1.5 block">Active Wallet</label>
-        <Select value={selectedWallet} onValueChange={setSelectedWallet}>
-          <SelectTrigger className="w-full bg-secondary/30 border-border h-9">
-            <div className="flex items-center gap-2">
-              <Wallet className="w-3 h-3 text-primary" />
-              <SelectValue />
+      {/* Multi-Wallet Selector */}
+      <div className="p-4 pb-0 border-b border-border">
+        <MultiWalletSelector />
+        {activeWalletsList.length > 0 && (
+          <div className="mt-3 p-2 rounded-lg bg-primary/5 border border-primary/20">
+            <div className="flex justify-between items-center">
+              <span className="text-[10px] text-muted-foreground uppercase font-bold">Total Active Balance</span>
+              <span className="text-sm font-mono font-bold text-primary">
+                {totalActiveBalance.toFixed(4)} SOL
+              </span>
             </div>
-          </SelectTrigger>
-          <SelectContent>
-            {myWallets.map(w => (
-              <SelectItem key={w.id} value={w.id}>
-                <div className="flex items-center justify-between w-full gap-4">
-                  <span>{w.label}</span>
-                  <span className="font-mono text-xs text-muted-foreground">{w.balance !== null ? w.balance.toFixed(3) : '...'} SOL</span>
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <div className="flex justify-between mt-1 px-1">
-          <span className="text-[10px] text-muted-foreground">Balance:</span>
-          <span className="text-[10px] font-mono font-bold text-primary">
-            {balance !== null ? balance.toFixed(4) : '...'} SOL
-          </span>
-        </div>
+            <div className="text-[10px] text-muted-foreground mt-1">
+              {activeWalletsList.length} wallet{activeWalletsList.length !== 1 ? 's' : ''} ready to trade
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Trade Form */}

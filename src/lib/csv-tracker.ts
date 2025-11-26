@@ -1,6 +1,6 @@
 /**
  * CSV Tracker for New Token Analytics
- * Tracks: name, ticker, contract address, initial buy-in amount
+ * Tracks: name, ticker, contract address, initial buy-in amount, creator wallet
  */
 
 export type TokenRecord = {
@@ -13,9 +13,10 @@ export type TokenRecord = {
   initialMarketCapSOL: number;
   initialMarketCapUSD: number;
   metadataUri?: string;
+  creatorWallet?: string; // Wallet address that created the token
 };
 
-const CSV_HEADER = 'Timestamp,Name,Ticker,Contract Address,Initial Buy In (SOL),Initial Buy In (USD),Initial Market Cap (SOL),Initial Market Cap (USD),Metadata URI\n';
+const CSV_HEADER = 'Timestamp,Name,Ticker,Contract Address,Initial Buy In (SOL),Initial Buy In (USD),Initial Market Cap (SOL),Initial Market Cap (USD),Metadata URI,Creator Wallet\n';
 
 /**
  * Convert token record to CSV row
@@ -41,6 +42,7 @@ export function tokenRecordToCSVRow(record: TokenRecord): string {
     escapeCSV(record.initialMarketCapSOL.toFixed(6)),
     escapeCSV(record.initialMarketCapUSD.toFixed(2)),
     escapeCSV(record.metadataUri || ''),
+    escapeCSV(record.creatorWallet || ''),
   ].join(',') + '\n';
 }
 
@@ -57,8 +59,9 @@ export async function saveTokenToCSV(record: TokenRecord): Promise<void> {
       body: JSON.stringify(record),
     });
   } catch (error) {
-    console.error('Failed to save token to CSV:', error);
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Failed to save token to CSV:', error);
+    }
     // Don't throw - we don't want to break the app if CSV saving fails
   }
 }
-

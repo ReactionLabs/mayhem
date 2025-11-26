@@ -3,7 +3,7 @@ import { formatReadablePercentChange } from '@/lib/format/number';
 import { cn } from '@/lib/utils';
 import React, { memo, useState } from 'react';
 import { getNumberColorCn } from '../ui/ReadableNumber';
-import { ToggleGroup as ToggleGroupPrimitive } from 'radix-ui';
+import * as ToggleGroupPrimitive from '@radix-ui/react-toggle-group';
 
 type TokenStatsProps = {
   className?: string;

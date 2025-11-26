@@ -1,4 +1,4 @@
-import { ToggleGroup as ToggleGroupPrimitive } from 'radix-ui';
+import * as ToggleGroupPrimitive from '@radix-ui/react-toggle-group';
 import { ColumnDef } from '@tanstack/react-table';
 
 import { DateMode } from './datemode';

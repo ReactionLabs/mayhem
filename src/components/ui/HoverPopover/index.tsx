@@ -1,4 +1,4 @@
-import { Popover as PopoverPrimitive } from 'radix-ui';
+import * as PopoverPrimitive from '@radix-ui/react-popover';
 import { forwardRef } from 'react';
 
 import { HoverPopover, useHoverPopover } from './context';

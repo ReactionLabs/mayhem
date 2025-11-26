@@ -9,7 +9,8 @@ import {
   Menu,
   X,
   BarChart2,
-  User
+  User,
+  TrendingUp
 } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '../ui/button';
@@ -18,6 +19,7 @@ const navItems = [
   { href: '/', label: 'Explore', icon: Home },
   { href: '/create-pool', label: 'Studio', icon: FlaskConical },
   { href: '/portfolio', label: 'Portfolio', icon: Wallet },
+  { href: '/liquidity', label: 'Liquidity', icon: TrendingUp },
 ];
 
 export const Sidebar = () => {

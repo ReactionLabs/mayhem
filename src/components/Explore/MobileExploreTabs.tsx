@@ -1,5 +1,5 @@
 import React from 'react';
-import { ToggleGroup as ToggleGroupPrimitive } from 'radix-ui';
+import * as ToggleGroupPrimitive from '@radix-ui/react-toggle-group';
 import { useExplore } from '@/contexts/ExploreProvider';
 import { ExploreTab } from './types';
 import { PausedIndicator } from './PausedIndicator';

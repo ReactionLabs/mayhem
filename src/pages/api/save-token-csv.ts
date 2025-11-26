@@ -19,7 +19,7 @@ async function ensureCSVFile() {
   await ensureDataDir();
   
   if (!existsSync(CSV_FILE)) {
-    const header = 'Timestamp,Name,Ticker,Contract Address,Initial Buy In (SOL),Initial Buy In (USD),Initial Market Cap (SOL),Initial Market Cap (USD),Metadata URI\n';
+    const header = 'Timestamp,Name,Ticker,Contract Address,Initial Buy In (SOL),Initial Buy In (USD),Initial Market Cap (SOL),Initial Market Cap (USD),Metadata URI,Creator Wallet\n';
     await writeFile(CSV_FILE, header, 'utf-8');
   }
 }

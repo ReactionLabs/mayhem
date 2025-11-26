@@ -1,5 +1,6 @@
 import { QueryStatus } from '@tanstack/react-query';
 import React, { forwardRef, memo, useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/router';
 
 import { Pool, TokenListTimeframe } from '../Explore/types';
 import { useDataStream } from '@/contexts/DataStreamProvider';
@@ -23,9 +24,19 @@ type TokenCardListProps = React.ComponentPropsWithoutRef<'div'> & {
 export const TokenCardList = memo(
   forwardRef<HTMLDivElement, TokenCardListProps>(
     ({ timeframe, data, status, trackPools, emptyState, className, onSelectToken, ...props }, ref) => {
+      const router = useRouter();
       const [visiblePoolIds, setVisiblePoolIds] = useState<Set<string>>(() => new Set());
       const poolElements = useRef(new Map<string, Element>());
       const observer = useRef<IntersectionObserver | undefined>(undefined);
+      
+      const handleTokenClick = useCallback((mint: string) => {
+        if (onSelectToken) {
+          onSelectToken(mint);
+        } else {
+          // Fallback: navigate to token page
+          router.push(`/token/${mint}`);
+        }
+      }, [onSelectToken, router]);
 
       useEffect(() => {
         const newObserver = new IntersectionObserver(
@@ -97,7 +108,7 @@ export const TokenCardList = memo(
           ) : (
             <>
               {data.map((pool) => (
-                <div key={pool.baseAsset.id} onClick={() => onSelectToken?.(pool.baseAsset.id)}>
+                <div key={pool.baseAsset.id} onClick={() => handleTokenClick(pool.baseAsset.id)}>
                     <TokenCard
                         pool={pool}
                         timeframe={timeframe}

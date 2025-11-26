@@ -26,7 +26,8 @@ type GeneratedWallet = {
   publicKey: string;
   privateKey: string;
   label: string;
-  apiKey?: string; // PumpPortal API key
+  apiKey: string; // PumpPortal API key (required)
+  createdAt: string; // ISO timestamp
 };
 
 // --- Components ---
@@ -149,24 +150,47 @@ export default function PortfolioPage() {
   const createNewBotWallet = async () => {
     try {
       toast.loading("Generating wallet...");
-      const response = await fetch('https://pumpportal.fun/api/create-wallet');
-      if (!response.ok) throw new Error('Failed');
+      const response = await fetch('https://pumpportal.fun/api/create-wallet', {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to create wallet: ${response.status} ${errorText}`);
+      }
+      
       const data = await response.json();
+      
+      // Validate response structure
+      if (!data.publicKey || !data.privateKey || !data.apiKey) {
+        throw new Error('Invalid wallet data received from PumpPortal');
+      }
       
       const newWallet: GeneratedWallet = {
         publicKey: data.publicKey,
         privateKey: data.privateKey,
         apiKey: data.apiKey,
-        label: `Bot Wallet ${generatedWallets.length + 1}`
+        label: `Bot Wallet ${generatedWallets.length + 1}`,
+        createdAt: new Date().toISOString(),
       };
 
       const updated = [...generatedWallets, newWallet];
       saveGeneratedWallets(updated);
+      
       toast.dismiss();
-      toast.success("New Bot Wallet Created");
+      toast.success("New Lightning Wallet Created", {
+        description: "Wallet and API key saved to local storage",
+      });
     } catch (e) {
       toast.dismiss();
-      toast.error("Failed to generate wallet");
+      const errorMessage = e instanceof Error ? e.message : "Failed to generate wallet";
+      toast.error(errorMessage);
+      if (process.env.NODE_ENV === 'development') {
+        console.error("Wallet creation error:", e);
+      }
     }
   };
   
@@ -272,11 +296,13 @@ export default function PortfolioPage() {
               <TabsContent value="wallets" className="space-y-6 mt-0">
                 <div className="flex justify-between items-center">
                   <div>
-                    <h2 className="text-xl font-bold">My Personal Wallets</h2>
-                    <p className="text-muted-foreground text-sm">Manage your generated bot and trading wallets.</p>
+                    <h2 className="text-xl font-bold">My Lightning Wallets</h2>
+                    <p className="text-muted-foreground text-sm">
+                      Create on-chain wallets via PumpPortal. API keys are stored locally.
+                    </p>
                   </div>
                   <Button onClick={createNewBotWallet} className="gap-2">
-                    <Plus className="w-4 h-4" /> Create New Wallet
+                    <Plus className="w-4 h-4" /> Create Lightning Wallet
                   </Button>
                 </div>
 
