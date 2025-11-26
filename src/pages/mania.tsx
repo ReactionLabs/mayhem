@@ -85,7 +85,7 @@ const FeedItemCard = ({ item }: { item: FeedItem }) => (
             {item.engagement.views?.toLocaleString()}
           </div>
         </div>
-        <span>{item.timestamp.toLocaleTimeString()}</span>
+        <span>{new Date(item.timestamp).toLocaleTimeString()}</span>
       </div>
 
       {item.relatedTokens && item.relatedTokens.length > 0 && (

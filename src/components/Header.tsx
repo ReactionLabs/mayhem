@@ -254,6 +254,9 @@ export const Header = () => {
         <Link href="/mania" className="hidden md:block text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
           Mania
         </Link>
+        <Link href="/ai-vision" className="hidden md:block text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+          AI Vision
+        </Link>
       </div>
 
       {/* Global Search Bar */}

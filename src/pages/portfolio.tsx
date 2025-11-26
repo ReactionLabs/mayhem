@@ -151,27 +151,39 @@ export default function PortfolioPage() {
     try {
       toast.loading("Generating wallet...");
       const response = await fetch('https://pumpportal.fun/api/create-wallet', {
-        method: 'GET',
+        method: 'POST', // Changed to POST to match the working implementation
         headers: {
           'Accept': 'application/json',
+          'Content-Type': 'application/json',
         },
       });
-      
+
       if (!response.ok) {
         const errorText = await response.text();
         throw new Error(`Failed to create wallet: ${response.status} ${errorText}`);
       }
-      
+
       const data = await response.json();
-      
-      // Validate response structure
-      if (!data.publicKey || !data.privateKey || !data.apiKey) {
-        throw new Error('Invalid wallet data received from PumpPortal');
+
+      // Debug logging in development
+      if (process.env.NODE_ENV === 'development') {
+        console.log('PumpPortal wallet creation response:', data);
+      }
+
+      // Validate response structure - check for different possible field names
+      if (!data.publicKey && !data.address) {
+        throw new Error('Missing public key in wallet data');
+      }
+      if (!data.privateKey && !data.secretKey) {
+        throw new Error('Missing private key in wallet data');
+      }
+      if (!data.apiKey) {
+        throw new Error('Missing API key in wallet data');
       }
       
       const newWallet: GeneratedWallet = {
-        publicKey: data.publicKey,
-        privateKey: data.privateKey,
+        publicKey: data.publicKey || data.address, // Handle both field names
+        privateKey: data.privateKey || data.secretKey, // Handle both field names
         apiKey: data.apiKey,
         label: `Bot Wallet ${generatedWallets.length + 1}`,
         createdAt: new Date().toISOString(),

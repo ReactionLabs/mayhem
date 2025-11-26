@@ -45,8 +45,14 @@ export const ManiaFeedProvider: React.FC<ManiaFeedProviderProps> = ({ children }
       const data = await response.json();
 
       if (data.success && data.feeds) {
+        // Convert string timestamps to Date objects
+        const processedFeeds = data.feeds.map((feed: any) => ({
+          ...feed,
+          timestamp: new Date(feed.timestamp)
+        }));
+
         // Apply local filtering based on settings
-        const filteredFeeds = data.feeds.filter((feed: FeedItem) => {
+        const filteredFeeds = processedFeeds.filter((feed: FeedItem) => {
           // Filter based on enabled sources
           if (feed.platform === 'twitter' && !settings.feedSources.aio.ct) return false;
           if (feed.platform === 'telegram' && !settings.feedSources.aio.tg) return false;

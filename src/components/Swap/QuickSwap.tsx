@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
-import { ArrowDown, Wallet, RefreshCw } from 'lucide-react';
+import { ArrowDown, Wallet, RefreshCw, Zap } from 'lucide-react';
 import { useConnection, useWallet } from '@jup-ag/wallet-adapter';
-import { LAMPORTS_PER_SOL, PublicKey, Transaction } from '@solana/web3.js';
+import { LAMPORTS_PER_SOL, PublicKey, Transaction, ComputeBudgetProgram } from '@solana/web3.js';
 import { PumpFunSDK } from '@/lib/pump-fun';
 import { getAssociatedTokenAddress } from '@solana/spl-token';
 import BN from 'bn.js';
@@ -16,14 +16,39 @@ interface QuickSwapProps {
 export const QuickSwap: React.FC<QuickSwapProps> = ({ mint }) => {
   const { connection } = useConnection();
   const { publicKey, signTransaction, sendTransaction } = useWallet();
-  
+
   const [mode, setMode] = useState<'buy' | 'sell'>('buy');
   const [amount, setAmount] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [solBalance, setSolBalance] = useState<number | null>(null);
   const [tokenBalance, setTokenBalance] = useState<number | null>(null);
+  const [curveState, setCurveState] = useState<any>(null);
+  const [isPreComputing, setIsPreComputing] = useState(false);
 
-  // Fetch balances
+  // Pre-compute bonding curve state and fetch balances
+  useEffect(() => {
+    if (!connection || !mint) return;
+
+    const fetchCurveState = async () => {
+      try {
+        const mintKey = new PublicKey(mint);
+        const bondingCurve = PumpFunSDK.getBondingCurvePDA(mintKey);
+        const state = await PumpFunSDK.getBondingCurveAccount(connection, bondingCurve);
+        setCurveState(state);
+      } catch (e) {
+        if (process.env.NODE_ENV === 'development') {
+          console.error("Error fetching curve state", e);
+        }
+      }
+    };
+
+    fetchCurveState();
+    // Update curve state more frequently for real-time price changes
+    const id = setInterval(fetchCurveState, 2000); // Update every 2s
+    return () => clearInterval(id);
+  }, [connection, mint]);
+
+  // Fetch balances (less frequently)
   useEffect(() => {
     if (!publicKey || !connection) return;
 
@@ -52,11 +77,50 @@ export const QuickSwap: React.FC<QuickSwapProps> = ({ mint }) => {
     };
 
     fetchBalances();
-    const id = setInterval(fetchBalances, 10000); // Update every 10s
+    const id = setInterval(fetchBalances, 15000); // Update every 15s (less frequent)
     return () => clearInterval(id);
   }, [publicKey, connection, mint]);
 
-  const handlePercentage = (percent: number) => {
+  // Pre-computed quote calculation
+  const quote = useMemo(() => {
+    if (!curveState || !amount || parseFloat(amount) <= 0) return null;
+
+    try {
+      if (mode === 'buy') {
+        const solAmount = parseFloat(amount);
+        const solAmountLamports = new BN(solAmount * 1e9);
+        const tokensOut = PumpFunSDK.calculateBuyQuote(
+          solAmountLamports,
+          curveState.virtualSolReserves,
+          curveState.virtualTokenReserves
+        );
+        const tokensOutNumber = tokensOut.toNumber() / 1e6; // Assuming 6 decimals
+        return {
+          inputAmount: solAmount,
+          outputAmount: tokensOutNumber,
+          price: solAmount / tokensOutNumber
+        };
+      } else {
+        const tokenAmt = parseFloat(amount);
+        const tokenAmountLamports = new BN(tokenAmt * 1e6); // Assuming 6 decimals
+        const solOut = PumpFunSDK.calculateSellQuote(
+          tokenAmountLamports,
+          curveState.virtualSolReserves,
+          curveState.virtualTokenReserves
+        );
+        const solOutNumber = solOut.toNumber() / 1e9;
+        return {
+          inputAmount: tokenAmt,
+          outputAmount: solOutNumber,
+          price: solOutNumber / tokenAmt
+        };
+      }
+    } catch (e) {
+      return null;
+    }
+  }, [curveState, amount, mode]);
+
+  const handlePercentage = useCallback((percent: number) => {
     if (mode === 'buy') {
       if (solBalance === null) return;
       // Leave some SOL for gas (e.g. 0.01)
@@ -66,7 +130,7 @@ export const QuickSwap: React.FC<QuickSwapProps> = ({ mint }) => {
       if (tokenBalance === null) return;
       setAmount((tokenBalance * (percent / 100)).toFixed(6));
     }
-  };
+  }, [mode, solBalance, tokenBalance]);
 
   const executeTrade = async () => {
     if (!publicKey || !signTransaction) {

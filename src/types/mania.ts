@@ -68,7 +68,7 @@ export interface SocialPost {
   platform: 'twitter' | 'telegram' | 'instagram' | 'news' | 'truth';
   author: string;
   content: string;
-  timestamp: Date;
+  timestamp: Date | string; // Can be Date object or ISO string from API
   engagement: {
     likes: number;
     retweets?: number;
