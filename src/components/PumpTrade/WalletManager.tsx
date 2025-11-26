@@ -41,7 +41,9 @@ export const WalletManager: React.FC<WalletManagerProps> = ({ onApiKeyChange, cu
       
       toast.success('New trading wallet generated!');
     } catch (error) {
-      console.error('Wallet generation failed:', error);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Wallet generation failed:', error);
+      }
       toast.error('Failed to generate new wallet');
     } finally {
       setIsLoading(false);

@@ -174,6 +174,7 @@ export const TrenchesTokenIconImage: React.FC<TrenchesTokenIconImageProps> = ({
       style={style}
       onError={handleImageError}
       draggable={false}
+      loading="lazy"
       {...props}
     />
   );

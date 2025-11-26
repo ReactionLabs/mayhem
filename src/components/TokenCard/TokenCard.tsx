@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 
 import { Pool, TokenListTimeframe } from '../Explore/types';
 
@@ -18,7 +18,7 @@ type TokenCardProps = {
   rowRef: (element: HTMLElement | null, poolId: string) => void;
 };
 
-export const TokenCard: React.FC<TokenCardProps> = ({ pool, timeframe, rowRef }) => {
+export const TokenCard: React.FC<TokenCardProps> = memo(({ pool, timeframe, rowRef }) => {
   const stats = pool.baseAsset[`stats${timeframe}`];
 
   // We assume the parent container handles the click via onClick prop on the list item
@@ -92,7 +92,16 @@ export const TokenCard: React.FC<TokenCardProps> = ({ pool, timeframe, rowRef })
       </div>
     </div>
   );
-};
+}, (prevProps, nextProps) => {
+  // Custom comparison for memo
+  return (
+    prevProps.pool.id === nextProps.pool.id &&
+    prevProps.pool.baseAsset.mcap === nextProps.pool.baseAsset.mcap &&
+    prevProps.pool.baseAsset[`stats${prevProps.timeframe}`]?.buyVolume === 
+      nextProps.pool.baseAsset[`stats${nextProps.timeframe}`]?.buyVolume &&
+    prevProps.timeframe === nextProps.timeframe
+  );
+});
 
 type TokenCardSkeletonProps = React.ComponentPropsWithoutRef<'div'>;
 

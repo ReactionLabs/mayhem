@@ -233,7 +233,9 @@ export const PumpTrade: React.FC<PumpTradeProps> = ({ mint, className }) => {
       }
       
     } catch (error) {
-      console.error('Trade failed:', error);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Trade failed:', error);
+      }
       toast.error(error instanceof Error ? error.message : 'Trade failed');
     } finally {
       setIsLoading(false);

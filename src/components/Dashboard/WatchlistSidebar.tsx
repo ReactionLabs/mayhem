@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, memo, useCallback, useMemo } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { TrendingUp, TrendingDown, Star, Activity } from 'lucide-react';
@@ -16,7 +16,7 @@ interface WatchlistSidebarProps {
     onSelectToken?: (mint: string) => void;
 }
 
-export const WatchlistSidebar: React.FC<WatchlistSidebarProps> = ({ onSelectToken }) => {
+export const WatchlistSidebar: React.FC<WatchlistSidebarProps> = memo(({ onSelectToken }) => {
   const { 
     subscribeNewTokens, 
     subscribeTokenTrades, 

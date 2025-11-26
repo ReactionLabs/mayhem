@@ -45,7 +45,9 @@ export const QuickSwap: React.FC<QuickSwapProps> = ({ mint }) => {
           }
         }
       } catch (e) {
-        console.error("Error fetching balances", e);
+        if (process.env.NODE_ENV === 'development') {
+          console.error("Error fetching balances", e);
+        }
       }
     };
 
@@ -144,7 +146,9 @@ export const QuickSwap: React.FC<QuickSwapProps> = ({ mint }) => {
       setAmount(''); // Reset form
       
     } catch (error) {
-      console.error('Swap failed:', error);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Swap failed:', error);
+      }
       toast.error(error instanceof Error ? error.message : 'Swap failed');
     } finally {
       setIsLoading(false);

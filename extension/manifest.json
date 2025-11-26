@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "Mayhem Trading Assistant",
+  "version": "1.0.0",
+  "description": "Chart analysis, token links, and backlinks for any trading platform. Pairs with Mayhem launchpad.",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://*/*",
+    "http://localhost:3000/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://pump.fun/*",
+        "https://dexscreener.com/*",
+        "https://birdeye.so/*",
+        "https://jup.ag/*",
+        "https://raydium.io/*",
+        "https://*/*"
+      ],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Mayhem Trading Assistant"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["injected.js", "styles/injected.css", "automation.js"],
+      "matches": ["https://*/*"]
+    }
+  ]
+}
+

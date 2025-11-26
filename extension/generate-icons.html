@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Generate Icons</title>
+</head>
+<body>
+  <canvas id="canvas16" width="16" height="16"></canvas>
+  <canvas id="canvas48" width="48" height="48"></canvas>
+  <canvas id="canvas128" width="128" height="128"></canvas>
+  <script>
+    function drawIcon(ctx, size) {
+      const gradient = ctx.createLinearGradient(0, 0, size, size);
+      gradient.addColorStop(0, '#6366f1');
+      gradient.addColorStop(1, '#8b5cf6');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, size, size);
+      ctx.strokeStyle = 'white';
+      ctx.lineWidth = size / 16;
+      ctx.beginPath();
+      ctx.moveTo(size * 0.25, size * 0.25);
+      ctx.lineTo(size * 0.5, size * 0.5);
+      ctx.lineTo(size * 0.75, size * 0.25);
+      ctx.moveTo(size * 0.25, size * 0.5);
+      ctx.lineTo(size * 0.5, size * 0.75);
+      ctx.lineTo(size * 0.75, size * 0.5);
+      ctx.stroke();
+      ctx.fillStyle = 'white';
+      ctx.beginPath();
+      ctx.arc(size * 0.5, size * 0.5, size / 32, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    [16, 48, 128].forEach(size => {
+      const canvas = document.getElementById(`canvas${size}`);
+      const ctx = canvas.getContext('2d');
+      drawIcon(ctx, size);
+      const link = document.createElement('a');
+      link.download = `icon${size}.png`;
+      link.href = canvas.toDataURL();
+      link.click();
+    });
+  </script>
+</body>
+</html>
+

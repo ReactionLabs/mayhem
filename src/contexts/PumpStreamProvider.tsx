@@ -58,7 +58,9 @@ export const PumpStreamProvider = ({ children }: { children: React.ReactNode }) 
     ws.current = socket;
 
     socket.onopen = () => {
-      console.log('Connected to PumpPortal WebSocket');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Connected to PumpPortal WebSocket');
+      }
       setIsConnected(true);
 
       // Resubscribe if needed
@@ -74,14 +76,18 @@ export const PumpStreamProvider = ({ children }: { children: React.ReactNode }) 
     };
 
     socket.onclose = () => {
-      console.log('Disconnected from PumpPortal WebSocket');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Disconnected from PumpPortal WebSocket');
+      }
       setIsConnected(false);
       // Simple reconnect logic
       setTimeout(connect, 3000);
     };
 
     socket.onerror = (error) => {
-      console.error('PumpPortal WebSocket error:', error);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('PumpPortal WebSocket error:', error);
+      }
       socket.close();
     };
 
@@ -97,7 +103,9 @@ export const PumpStreamProvider = ({ children }: { children: React.ReactNode }) 
           setLastTradeEvent(data);
         }
       } catch (e) {
-        console.error('Error parsing PumpPortal message:', e);
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Error parsing PumpPortal message:', e);
+        }
       }
     };
   }, []);

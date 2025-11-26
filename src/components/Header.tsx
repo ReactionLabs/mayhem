@@ -1,3 +1,4 @@
+import React from 'react';
 import { useUnifiedWalletContext, useWallet, useConnection } from '@jup-ag/wallet-adapter';
 import Link from 'next/link';
 import { Button } from './ui/button';
@@ -14,7 +15,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/DropdownMenu';
+} from './ui/DropdownMenu';
 import { toast } from 'sonner';
 import { LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
 
@@ -28,7 +29,9 @@ export const Header = () => {
   const [solBalance, setSolBalance] = useState<number | null>(null);
   const [solPrice, setSolPrice] = useState<number | null>(null);
   const [showSolValue, setShowSolValue] = useState(false);
-  const [balanceFetchEnabled, setBalanceFetchEnabled] = useState(true);
+  // Disable balance fetch by default to prevent fetch errors
+  // Can be enabled later once RPC connection is stable
+  const [balanceFetchEnabled, setBalanceFetchEnabled] = useState(false);
 
   const handleConnectWallet = () => {
     setShowModal(true);
@@ -51,19 +54,34 @@ export const Header = () => {
       }
 
       // For name searches, try to find token
-      // First try searching via API
-      const response = await fetch(`/api/search-token?q=${encodeURIComponent(searchTerm)}`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data.token) {
-          router.push(`/token/${data.token.baseAsset.id}`);
-          setGlobalSearch('');
-          return;
+      // First try searching via API with timeout
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        
+        const response = await fetch(`/api/search-token?q=${encodeURIComponent(searchTerm)}`, {
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.token) {
+            router.push(`/token/${data.token.baseAsset.id}`);
+            setGlobalSearch('');
+            return;
+          }
+        }
+      } catch (fetchError) {
+        // Silently fail - just try direct navigation
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('Search API failed, using direct navigation:', fetchError);
         }
       }
 
-      // If API search fails, show error
-      toast.error('Token not found. Please use contract address (CA) or token name.');
+      // If API search fails, try direct navigation
+      router.push(`/token/${searchTerm}`);
+      setGlobalSearch('');
     } catch (error) {
       // Fallback: try direct navigation anyway
       router.push(`/token/${searchTerm}`);
@@ -78,116 +96,13 @@ export const Header = () => {
     }
   };
 
+  // Balance fetch is disabled by default to prevent fetch errors
+  // The balance display will show "--" until this is enabled
+  // To enable: set balanceFetchEnabled to true and ensure RPC connection is stable
   useEffect(() => {
-    // Completely disable balance fetching if it's been disabled due to errors
-    if (!balanceFetchEnabled) {
-      return;
-    }
-
-    // Only run in browser
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    // Early return if no wallet connected
-    if (!publicKey) {
-      setSolBalance(null);
-      return;
-    }
-
-    // Check if connection is available and valid
-    if (!connection) {
-      setSolBalance(null);
-      return;
-    }
-
-    // Verify connection has getBalance method
-    if (typeof connection.getBalance !== 'function') {
-      setSolBalance(null);
-      return;
-    }
-
-    let cancelled = false;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-    let mounted = true;
-
-    // Wrap the entire async operation
-    const fetchBalance = async () => {
-      // Add delay to ensure connection is ready
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      if (cancelled || !mounted) return;
-
-      try {
-        // Validate publicKey
-        let pubkey: PublicKey;
-        try {
-          pubkey = new PublicKey(publicKey);
-        } catch {
-          if (mounted && !cancelled) {
-            setSolBalance(null);
-          }
-          return;
-        }
-
-        // Double-check connection
-        if (!connection || typeof connection.getBalance !== 'function') {
-          if (mounted && !cancelled) {
-            setSolBalance(null);
-          }
-          return;
-        }
-
-        // Fetch with timeout
-        try {
-          const balancePromise = connection.getBalance(pubkey, 'confirmed');
-          const timeoutPromise = new Promise<never>((_, reject) => 
-            setTimeout(() => reject(new Error('Timeout')), 5000)
-          );
-
-          const balanceLamports = await Promise.race([balancePromise, timeoutPromise]);
-
-          if (mounted && !cancelled && typeof balanceLamports === 'number' && balanceLamports >= 0) {
-            setSolBalance(balanceLamports / LAMPORTS_PER_SOL);
-          } else if (mounted && !cancelled) {
-            setSolBalance(null);
-          }
-        } catch (error: unknown) {
-          // Completely suppress all errors - balance is optional
-          if (mounted && !cancelled) {
-            setSolBalance(null);
-            // Disable on any error to prevent repeated failures
-            setBalanceFetchEnabled(false);
-          }
-        }
-      } catch (error: unknown) {
-        // Catch any unexpected errors
-        if (mounted && !cancelled) {
-          setSolBalance(null);
-          setBalanceFetchEnabled(false);
-        }
-      }
-    };
-
-    // Start the fetch
-    timeoutId = setTimeout(() => {
-      fetchBalance().catch(() => {
-        // Silently catch any promise rejections
-        if (mounted && !cancelled) {
-          setSolBalance(null);
-          setBalanceFetchEnabled(false);
-        }
-      });
-    }, 300);
-
-    return () => {
-      cancelled = true;
-      mounted = false;
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-    };
-  }, [publicKey, connection, balanceFetchEnabled]);
+    // Completely disabled - no balance fetching
+    setSolBalance(null);
+  }, [publicKey]);
 
   // Price fetch disabled to prevent fetch errors
   // Will show SOL balance only

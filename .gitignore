@@ -138,3 +138,6 @@ dist
 
 # Ignore monorepo structure for Vercel builds
 meteora-invent/
+
+# Token analytics CSV (keep in git for analysis)
+# data/token-analytics.csv

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, memo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -20,7 +20,7 @@ type TradePanelProps = {
   activeMint?: string; // The mint address of the token to trade
 };
 
-export const TradePanel: React.FC<TradePanelProps> = ({ activeMint }) => {
+export const TradePanel: React.FC<TradePanelProps> = memo(({ activeMint }) => {
   const { publicKey, signTransaction } = useWallet();
   const { connection } = useConnection();
   const [selectedWallet, setSelectedWallet] = useState('main');
@@ -60,7 +60,11 @@ export const TradePanel: React.FC<TradePanelProps> = ({ activeMint }) => {
             setBalance(bal / LAMPORTS_PER_SOL);
             // Update wallet list state too
             setMyWallets(prev => prev.map(w => w.id === selectedWallet ? { ...w, balance: bal / LAMPORTS_PER_SOL } : w));
-        }).catch(e => console.error("Failed to fetch balance", e));
+        }).catch(e => {
+          if (process.env.NODE_ENV === 'development') {
+            console.error("Failed to fetch balance", e);
+          }
+        });
     }
   }, [selectedWallet, connection, myWallets.length]); // Re-run if wallets change
 
@@ -75,7 +79,9 @@ export const TradePanel: React.FC<TradePanelProps> = ({ activeMint }) => {
         if (typeof parsed.autoSellTarget === 'string') setAutoSellTarget(parsed.autoSellTarget);
         if (typeof parsed.autoSellStop === 'string') setAutoSellStop(parsed.autoSellStop);
       } catch (err) {
-        console.warn('Failed to parse autosell settings', err);
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('Failed to parse autosell settings', err);
+        }
       }
     }
   }, []);
@@ -107,7 +113,9 @@ export const TradePanel: React.FC<TradePanelProps> = ({ activeMint }) => {
         setCurveState({ bondingCurve, ...data });
       } catch (err) {
         if (!cancelled) {
-          console.error('Failed to load bonding curve', err);
+          if (process.env.NODE_ENV === 'development') {
+            console.error('Failed to load bonding curve', err);
+          }
           setCurveState(null);
         }
       }
@@ -148,7 +156,9 @@ export const TradePanel: React.FC<TradePanelProps> = ({ activeMint }) => {
       setQuoteTokens(tokensOut);
       setQuoteStatus('idle');
     } catch (err) {
-      console.error('Quote calculation failed', err);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Quote calculation failed', err);
+      }
       setQuoteTokens(null);
       setQuoteStatus('error');
     }
@@ -175,7 +185,9 @@ export const TradePanel: React.FC<TradePanelProps> = ({ activeMint }) => {
       filtered.push(plan);
       localStorage.setItem('autosell_plans', JSON.stringify(filtered));
     } catch (err) {
-      console.warn('Failed to persist auto-sell plan', err);
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('Failed to persist auto-sell plan', err);
+      }
     }
   };
 
@@ -399,4 +411,4 @@ export const TradePanel: React.FC<TradePanelProps> = ({ activeMint }) => {
       </div>
     </div>
   );
-};
+});

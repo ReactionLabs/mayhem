@@ -1,0 +1,13 @@
+{
+  "network": "devnet",
+  "rpcUrl": "",
+  "mintDecimals": 6,
+  "tokenName": "EZ Boss Done",
+  "tokenSymbol": "EZBD",
+  "totalSupply": 1000000,
+  "ownerSharePercent": 50,
+  "buyInSol": 0.1,
+  "tokensPerBuy": 10000,
+  "metadataUri": "https://example.com/ezbd.json"
+}
+
