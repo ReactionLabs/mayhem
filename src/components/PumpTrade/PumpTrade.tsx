@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 import { WalletManager } from './WalletManager';
 import { Zap, SlidersHorizontal, Edit2, Check, TrendingUp, Wallet } from 'lucide-react';
 import { useTradeOverlay } from '@/contexts/TradeOverlayContext';
-import { useConnection, useWallet } from '@jup-ag/wallet-adapter';
+import { useConnection, useWallet, useUnifiedWalletContext } from '@jup-ag/wallet-adapter';
 import { PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js';
 import { PumpFunSDK, FEE_RECIPIENT } from '@/lib/pump-fun';
 import { getAssociatedTokenAddress } from '@solana/spl-token';
@@ -34,6 +34,8 @@ export const PumpTrade: React.FC<PumpTradeProps> = ({ mint, className }) => {
   // Solana Wallet Adapter
   const { connection } = useConnection();
   const { publicKey, signTransaction, sendTransaction } = useWallet();
+  const walletContext = useUnifiedWalletContext();
+  const setShowModal = walletContext?.setShowModal;
 
   // Presets State
   const [buyPresets, setBuyPresets] = useState(['0.1', '0.5', '1.0', '2.0']);
@@ -85,20 +87,35 @@ export const PumpTrade: React.FC<PumpTradeProps> = ({ mint, className }) => {
   };
 
   const executeDirectTrade = async (amountToTrade: string) => {
-    if (!publicKey || !signTransaction) {
+    // Pre-validate wallet connection - fail fast
+    if (!publicKey || !signTransaction || !sendTransaction) {
       toast.error('Please connect your wallet first');
+      // Auto-open wallet modal if available
+      if (setShowModal) {
+        setTimeout(() => setShowModal(true), 500);
+      }
       return;
     }
 
     try {
       setIsLoading(true);
+      
+      // Validate amount
+      const amount = parseFloat(amountToTrade);
+      if (isNaN(amount) || amount <= 0) {
+        throw new Error('Invalid amount');
+      }
+
       const mintPubkey = new PublicKey(mint);
       const bondingCurve = PumpFunSDK.getBondingCurvePDA(mintPubkey);
-      const associatedBondingCurve = await getAssociatedTokenAddress(mintPubkey, bondingCurve, true);
-      const associatedUser = await getAssociatedTokenAddress(mintPubkey, publicKey);
+      
+      // Parallel fetch of addresses and curve state for speed
+      const [associatedBondingCurve, associatedUser, curveState] = await Promise.all([
+        getAssociatedTokenAddress(mintPubkey, bondingCurve, true),
+        getAssociatedTokenAddress(mintPubkey, publicKey),
+        PumpFunSDK.getBondingCurveAccount(connection, bondingCurve),
+      ]);
 
-      // Fetch bonding curve state to calculate amounts
-      const curveState = await PumpFunSDK.getBondingCurveAccount(connection, bondingCurve);
       if (!curveState) {
         throw new Error('Bonding curve not found');
       }
@@ -165,10 +182,19 @@ export const PumpTrade: React.FC<PumpTradeProps> = ({ mint, className }) => {
         transaction.add(ix);
       }
 
-      const signature = await sendTransaction(transaction, connection);
-      await connection.confirmTransaction(signature, 'confirmed');
+      // Send transaction - use 'processed' for faster confirmation
+      const signature = await sendTransaction(transaction, connection, {
+        skipPreflight: false,
+        maxRetries: 3,
+      });
       
-      toast.success(`Direct Trade Successful! Sig: ${signature.slice(0, 8)}...`);
+      // Don't wait for full confirmation - show success immediately
+      toast.success(`Trade sent! Sig: ${signature.slice(0, 8)}...`);
+      
+      // Confirm in background (non-blocking)
+      connection.confirmTransaction(signature, 'processed').catch(() => {
+        // Silent fail - user already sees success
+      });
 
     } catch (error) {
       console.error('Direct trade failed:', error);
@@ -244,6 +270,16 @@ export const PumpTrade: React.FC<PumpTradeProps> = ({ mint, className }) => {
 
   const handleInstantClick = (val: string) => {
     if (isEditingPresets) return;
+    
+    // Pre-check wallet before setting amount
+    if (!publicKey && !apiKey) {
+      toast.error('Please connect your wallet first');
+      if (setShowModal) {
+        setTimeout(() => setShowModal(true), 300);
+      }
+      return;
+    }
+    
     setAmount(val);
     executeTrade(val);
   };
@@ -377,7 +413,14 @@ export const PumpTrade: React.FC<PumpTradeProps> = ({ mint, className }) => {
                       variant="outline"
                       className="hover:bg-green-500/10 hover:border-green-500/50 hover:text-green-500 transition-colors"
                     >
-                      {val} SOL
+                      <span className="flex items-center gap-1.5">
+                        <img 
+                          src="/solana-sol-logo.png" 
+                          alt="SOL" 
+                          className="w-3 h-3 rounded-full object-contain"
+                        />
+                        {val} SOL
+                      </span>
                     </Button>
                   )
                 ))}
@@ -411,7 +454,14 @@ export const PumpTrade: React.FC<PumpTradeProps> = ({ mint, className }) => {
       ) : mode === 'market' ? (
         <div className="space-y-4">
           <div className="space-y-2">
-            <label className="text-xs text-muted-foreground font-medium">
+            <label className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
+              {tradeType === 'buy' && (
+                <img 
+                  src="/solana-sol-logo.png" 
+                  alt="SOL" 
+                  className="w-3 h-3 rounded-full object-contain"
+                />
+              )}
               Amount ({tradeType === 'buy' ? 'SOL' : 'Tokens/%'})
             </label>
             <div className="flex gap-2">
@@ -439,7 +489,14 @@ export const PumpTrade: React.FC<PumpTradeProps> = ({ mint, className }) => {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] text-muted-foreground">Priority (SOL)</label>
+              <label className="text-[10px] text-muted-foreground flex items-center gap-1">
+                <img 
+                  src="/solana-sol-logo.png" 
+                  alt="SOL" 
+                  className="w-2.5 h-2.5 rounded-full object-contain"
+                />
+                Priority (SOL)
+              </label>
               <Input 
                 type="number" 
                 value={priorityFee} 

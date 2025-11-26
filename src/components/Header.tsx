@@ -33,6 +33,7 @@ import { debounce } from '@/lib/debounce';
 export const Header = () => {
   // Clerk: Identity and session management
   const { user, isSignedIn } = useUser();
+  const clerkEnabled = process.env.NEXT_PUBLIC_ENABLE_CLERK === 'true';
   
   // Solana Wallet: Blockchain connection
   const walletContext = useUnifiedWalletContext();
@@ -52,7 +53,7 @@ export const Header = () => {
   // Fetch SOL balance for connected wallet
   useEffect(() => {
     if (!publicKey || !connection) {
-      setSolBalance(null);
+      setSolBalance(0); // Show 0.00000 instead of null
       return;
     }
 
@@ -60,12 +61,13 @@ export const Header = () => {
       setIsLoadingBalance(true);
       try {
         const balance = await connection.getBalance(publicKey);
-        setSolBalance(balance / LAMPORTS_PER_SOL);
+        const solAmount = balance / LAMPORTS_PER_SOL;
+        setSolBalance(solAmount >= 0 ? solAmount : 0);
       } catch (error) {
         if (process.env.NODE_ENV === 'development') {
           console.error('Failed to fetch balance:', error);
         }
-        setSolBalance(null);
+        setSolBalance(0); // Default to 0 instead of null
       } finally {
         setIsLoadingBalance(false);
       }
@@ -78,89 +80,85 @@ export const Header = () => {
 
   const handleConnectWallet = () => {
     if (setShowModal) {
-      setShowModal();
+      setShowModal(true);
+      return;
     }
+    // Fallback: if unified wallet modal isn't available, attempt adapter's built-in connect flow
+    wallet.connect?.().catch(() => {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Wallet connect failed');
+      }
+    });
   };
 
-  // Debounced search handler - only executes after user stops typing
+  // Instant search handler - optimized for paste-to-trade flow
   const performSearch = useCallback(async (searchTerm: string) => {
     if (!searchTerm.trim()) return;
 
-    try {
-      // Check if it looks like a Solana address (base58, 32-44 chars)
-      const isLikelyAddress = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(searchTerm);
-      
-      if (isLikelyAddress) {
-        // Direct navigation for addresses
-        router.push(`/token/${searchTerm}`);
-        setGlobalSearch('');
-        return;
-      }
-
-      // For name searches, try to find token
-      // Only attempt API search if fetch is available and we're in browser
-      if (typeof window !== 'undefined' && typeof fetch !== 'undefined') {
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 2000); // Reduced timeout
-          
-          try {
-            const response = await Promise.race([
-              fetch(`/api/search-token?q=${encodeURIComponent(searchTerm)}`, {
-                signal: controller.signal,
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-              }),
-              new Promise<null>((_, reject) => 
-                setTimeout(() => reject(new Error('Timeout')), 2000)
-              ),
-            ]).catch(() => null); // Catch all errors silently
-            
-            clearTimeout(timeoutId);
-            
-            if (response && 'ok' in response && response.ok) {
-              try {
-                const contentType = response.headers.get('content-type');
-                if (!contentType || !contentType.includes('application/json')) {
-                  throw new Error('Response is not JSON');
-                }
-                const data = await response.json();
-                if (data && data.token) {
-                  router.push(`/token/${data.token.baseAsset.id}`);
-                  setGlobalSearch('');
-                  return;
-                }
-              } catch (jsonError) {
-                // Silently fail JSON parsing
-              }
-            }
-          } catch (fetchError) {
-            clearTimeout(timeoutId);
-            // Silently fail - just try direct navigation
-          }
-        } catch (error) {
-          // Silently fail - just try direct navigation
-        }
-      }
-
-      // If API search fails or fetch unavailable, try direct navigation
-      router.push(`/token/${searchTerm}`);
+    const trimmed = searchTerm.trim();
+    
+    // Check if it looks like a Solana address (base58, 32-44 chars)
+    // This regex matches Solana addresses more accurately
+    const isLikelyAddress = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(trimmed);
+    
+    if (isLikelyAddress) {
+      // INSTANT navigation for addresses - no API call needed
+      router.push(`/token/${trimmed}`);
       setGlobalSearch('');
-    } catch (error) {
-      // Fallback: try direct navigation anyway
+      return;
+    }
+
+    // For name searches, try API lookup with fast timeout
+    if (typeof window !== 'undefined' && typeof fetch !== 'undefined') {
       try {
-        router.push(`/token/${searchTerm}`);
-        setGlobalSearch('');
-      } catch (routerError) {
-        // Last resort: do nothing
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 1000); // Faster timeout
+        
+        const response = await Promise.race([
+          fetch(`/api/search-token?q=${encodeURIComponent(trimmed)}`, {
+            signal: controller.signal,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+          new Promise<null>((_, reject) => 
+            setTimeout(() => reject(new Error('Timeout')), 1000)
+          ),
+        ]).catch(() => null);
+        
+        clearTimeout(timeoutId);
+        
+        if (response?.ok) {
+          try {
+            const data = await response.json();
+            if (data?.token?.baseAsset?.id) {
+              router.push(`/token/${data.token.baseAsset.id}`);
+              setGlobalSearch('');
+              return;
+            }
+          } catch {
+            // JSON parse failed, continue to fallback
+          }
+        }
+      } catch {
+        // API failed, continue to fallback
       }
     }
+
+    // Fallback: try direct navigation (might be a valid address format we didn't catch)
+    router.push(`/token/${trimmed}`);
+    setGlobalSearch('');
   }, [router]);
 
-  // Debounce search with 500ms delay
+  // Debounce only for text searches, not addresses
   const debouncedSearch = useMemo(
-    () => debounce(performSearch, 500),
+    () => debounce((term: string) => {
+      // Skip debounce for addresses - instant navigation
+      const isAddress = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(term.trim());
+      if (isAddress) {
+        performSearch(term);
+      } else {
+        performSearch(term);
+      }
+    }, 300), // Reduced debounce for faster response
     [performSearch]
   );
 
@@ -171,12 +169,23 @@ export const Header = () => {
     performSearch(searchTerm);
   }, [globalSearch, performSearch]);
 
-  // Handle input change with debouncing for better UX
+  // Handle input change - detect paste events for instant navigation
   const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setGlobalSearch(value);
-    // Auto-search on Enter or after debounce (for better UX)
-  }, []);
+    
+    // Check if this looks like a pasted address (long string matching address pattern)
+    const trimmed = value.trim();
+    const isAddress = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(trimmed);
+    
+    // If it's an address, navigate instantly (no debounce)
+    if (isAddress && trimmed.length >= 32) {
+      performSearch(trimmed);
+    } else if (trimmed.length > 0) {
+      // For text searches, use debounce
+      debouncedSearch(trimmed);
+    }
+  }, [performSearch, debouncedSearch]);
 
   const copyAddress = () => {
     if (walletAddress) {
@@ -217,9 +226,11 @@ export const Header = () => {
             title="SOL Balance"
           >
             {/* SOL Logo */}
-            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white font-bold text-xs">
-              SOL
-            </div>
+            <img 
+              src="/solana-sol-logo.png" 
+              alt="SOL" 
+              className="w-6 h-6 rounded-full object-contain"
+            />
             <div className="flex flex-col">
               <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
                 Balance
@@ -227,10 +238,10 @@ export const Header = () => {
               <span className="font-semibold text-sm">
                 {isLoadingBalance ? (
                   '...'
-                ) : solBalance !== null ? (
-                  `${solBalance.toFixed(3)} SOL`
+                ) : solBalance !== null && solBalance >= 0 ? (
+                  `${solBalance.toFixed(5)} SOL`
                 ) : (
-                  '--'
+                  '0.00000 SOL'
                 )}
               </span>
             </div>
@@ -240,27 +251,29 @@ export const Header = () => {
         <ThemeToggle />
 
         {/* Clerk Identity Section */}
-        {!isSignedIn ? (
-          <div className="flex items-center gap-2">
-            <SignInButton mode="modal">
-              <Button variant="ghost" size="sm">
-                Sign In
-              </Button>
-            </SignInButton>
-            <SignUpButton mode="modal">
-              <Button size="sm">
-                Sign Up
-              </Button>
-            </SignUpButton>
-          </div>
-        ) : (
-          <UserButton 
-            appearance={{
-              elements: {
-                avatarBox: 'w-8 h-8',
-              },
-            }}
-          />
+        {clerkEnabled && (
+          !isSignedIn ? (
+            <div className="flex items-center gap-2">
+              <SignInButton mode="modal">
+                <Button variant="ghost" size="sm">
+                  Sign In
+                </Button>
+              </SignInButton>
+              <SignUpButton mode="modal">
+                <Button size="sm">
+                  Sign Up
+                </Button>
+              </SignUpButton>
+            </div>
+          ) : (
+            <UserButton 
+              appearance={{
+                elements: {
+                  avatarBox: 'w-8 h-8',
+                },
+              }}
+            />
+          )
         )}
 
         {/* Solana Wallet Section */}

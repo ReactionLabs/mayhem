@@ -184,7 +184,7 @@ export const QuickSwap: React.FC<QuickSwapProps> = ({ mint }) => {
             <span>Amount ({mode === 'buy' ? 'SOL' : 'TOKENS'})</span>
             <span className="flex items-center gap-1">
               <Wallet className="w-3 h-3" /> 
-              {mode === 'buy' ? `${solBalance?.toFixed(4) || '0'} SOL` : `${tokenBalance?.toFixed(2) || '0'}`}
+              {mode === 'buy' ? `${solBalance?.toFixed(5) || '0.00000'} SOL` : `${tokenBalance?.toFixed(2) || '0'}`}
             </span>
           </div>
           

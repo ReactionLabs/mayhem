@@ -5,15 +5,47 @@ import { z } from 'zod';
 import Header from '../components/Header';
 import { useForm } from '@tanstack/react-form';
 import { Button } from '@/components/ui/button';
-import { Keypair, VersionedTransaction, Connection, SystemProgram, LAMPORTS_PER_SOL, PublicKey, Transaction } from '@solana/web3.js';
+import {
+  Keypair,
+  VersionedTransaction,
+  Connection,
+  SystemProgram,
+  LAMPORTS_PER_SOL,
+  PublicKey,
+  Transaction,
+} from '@solana/web3.js';
 // @ts-ignore - bn.js types
 import BN from 'bn.js';
 import { PumpFunSDK } from '@/lib/pump-fun';
-import { useUnifiedWalletContext, useWallet } from '@jup-ag/wallet-adapter';
+import { useUnifiedWalletContext, useWallet, useConnection } from '@jup-ag/wallet-adapter';
 import { toast } from 'sonner';
-import { ImageIcon, Clock, TrendingUp, BarChart3, Settings, Coins, Lock, Unlock, FlaskConical } from 'lucide-react';
+import {
+  ImageIcon,
+  Clock,
+  TrendingUp,
+  BarChart3,
+  Settings,
+  Coins,
+  Lock,
+  Unlock,
+  FlaskConical,
+  Droplet,
+  Rocket,
+  BadgeCheck,
+} from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/Checkbox';
+import {
+  TOKEN_PROGRAM_ID,
+  MINT_SIZE,
+  createInitializeMintInstruction,
+  getAssociatedTokenAddress,
+  createAssociatedTokenAccountInstruction,
+  createMintToInstruction,
+  createSetAuthorityInstruction,
+  AuthorityType,
+} from '@solana/spl-token';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/Dialog';
 
 // Define the schema for form validation
 const poolSchema = z.object({
@@ -108,6 +140,135 @@ const EstimatedTokensDisplay = ({ initialBuyAmount }: { initialBuyAmount: number
         Estimated tokens you'll receive based on bonding curve
       </p>
     </div>
+  );
+};
+
+// Meteora Pairing Modal - Clean, professional DeFi interface
+const MeteoraPairingModal = ({
+  open,
+  onOpenChange,
+  mintAddress,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  mintAddress?: string | null;
+}) => {
+  const [solLiquidity, setSolLiquidity] = useState('1');
+  const [tokenLiquidity, setTokenLiquidity] = useState('1000000');
+
+  const handleLaunch = () => {
+    if (!mintAddress) {
+      toast.error('Create a custom SPL token first.');
+      return;
+    }
+    const meteoraUrl = `https://app.meteora.ag/pools/create?mint=${mintAddress}`;
+    window.open(meteoraUrl, '_blank');
+    toast.success('Opening Meteora... make sure to paste your liquidity amounts there.');
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg bg-card border-border/60">
+        <DialogHeader>
+          <DialogTitle className="text-xl font-bold flex items-center gap-2">
+            <Droplet className="w-5 h-5 text-primary" />
+            Seed Liquidity Pool
+          </DialogTitle>
+          <DialogDescription className="text-sm text-muted-foreground">
+            Pair your token with SOL liquidity using Meteora&apos;s trustless pools. Professional-grade DeFi infrastructure.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-5 py-2">
+          {/* Mint Address Display */}
+          <div className="space-y-2">
+            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Token Mint Address
+            </label>
+            <div className="relative">
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-secondary/40 border border-border/60 font-mono text-xs break-all">
+                <BadgeCheck className="w-4 h-4 text-primary shrink-0" />
+                <span className="text-foreground/90">
+                  {mintAddress || 'Create a token to unlock this'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Liquidity Inputs */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <img 
+                  src="/solana-sol-logo.png" 
+                  alt="SOL" 
+                  className="w-3 h-3 rounded-full object-contain"
+                />
+                SOL Amount
+              </label>
+              <Input
+                type="number"
+                min="0"
+                step="0.1"
+                value={solLiquidity}
+                onChange={(e) => setSolLiquidity(e.target.value)}
+                placeholder="1.0"
+                className="bg-background border-border/60 h-11 font-mono"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <Coins className="w-3 h-3" />
+                Token Amount
+              </label>
+              <Input
+                type="number"
+                min="0"
+                step="1"
+                value={tokenLiquidity}
+                onChange={(e) => setTokenLiquidity(e.target.value)}
+                placeholder="1000000"
+                className="bg-background border-border/60 h-11 font-mono"
+              />
+            </div>
+          </div>
+
+          {/* Info Box */}
+          <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 space-y-2">
+            <div className="flex items-start gap-2">
+              <Settings className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+              <div className="space-y-1.5 text-xs text-muted-foreground">
+                <p className="font-medium text-foreground/80">
+                  These values are for planning. Meteora will open with your mint prefilled.
+                </p>
+                <p>
+                  Want direct integration? We&apos;re working on auto-building pool transactions directly in-app.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2 pt-4">
+          <Button 
+            variant="outline" 
+            onClick={() => onOpenChange(false)}
+            className="border-border/60"
+          >
+            Cancel
+          </Button>
+          <Button 
+            disabled={!mintAddress} 
+            onClick={handleLaunch}
+            className="bg-primary hover:bg-primary/90 font-semibold"
+          >
+            <Rocket className="w-4 h-4 mr-2" />
+            Launch on Meteora
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 };
 
@@ -229,11 +390,15 @@ const AutosellSettings = ({ form }: { form: any }) => {
 
 export default function CreatePool() {
   const { publicKey, signTransaction, sendTransaction } = useWallet();
+  const { connection } = useConnection();
   const { setShowModal } = useUnifiedWalletContext();
   
   const [isLoading, setIsLoading] = useState(false);
+  const [isCreatingCustomToken, setIsCreatingCustomToken] = useState(false);
   const [poolCreated, setPoolCreated] = useState(false);
   const [createdTokenMint, setCreatedTokenMint] = useState<string>('');
+  const [customMintResult, setCustomMintResult] = useState<{ mint: string; signature: string } | null>(null);
+  const [meteoraModalOpen, setMeteoraModalOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [logoDragActive, setLogoDragActive] = useState(false);
 
@@ -406,6 +571,111 @@ export default function CreatePool() {
       },
     },
   });
+
+  const handleCreateCustomMint = async () => {
+    if (!publicKey || !sendTransaction) {
+      setShowModal(true);
+      return;
+    }
+    if (!connection) {
+      toast.error('Connection unavailable. Please reconnect your wallet.');
+      return;
+    }
+
+    const values = form.state.values as FormValues;
+    const decimals = values.decimals ?? 6;
+    const totalSupply = values.totalSupply ?? 1_000_000_000;
+
+    try {
+      setIsCreatingCustomToken(true);
+      toast.loading('Creating SPL token...');
+
+      const mintKeypair = Keypair.generate();
+      const lamports = await connection.getMinimumBalanceForRentExemption(MINT_SIZE);
+
+      const transaction = new Transaction().add(
+        SystemProgram.createAccount({
+          fromPubkey: publicKey,
+          newAccountPubkey: mintKeypair.publicKey,
+          space: MINT_SIZE,
+          lamports,
+          programId: TOKEN_PROGRAM_ID,
+        }),
+        createInitializeMintInstruction(
+          mintKeypair.publicKey,
+          decimals,
+          publicKey,
+          values.revokeFreezeAuthority ? null : publicKey
+        )
+      );
+
+      const associatedToken = await getAssociatedTokenAddress(mintKeypair.publicKey, publicKey);
+      transaction.add(
+        createAssociatedTokenAccountInstruction(
+          publicKey,
+          associatedToken,
+          publicKey,
+          mintKeypair.publicKey
+        )
+      );
+
+      const supplyBigInt = BigInt(Math.floor(totalSupply));
+      const mintAmount = supplyBigInt * BigInt(10) ** BigInt(decimals);
+
+      transaction.add(
+        createMintToInstruction(
+          mintKeypair.publicKey,
+          associatedToken,
+          publicKey,
+          mintAmount
+        )
+      );
+
+      if (values.revokeMintAuthority) {
+        transaction.add(
+          createSetAuthorityInstruction(
+            mintKeypair.publicKey,
+            publicKey,
+            AuthorityType.MintTokens,
+            null
+          )
+        );
+      }
+
+      if (values.revokeFreezeAuthority) {
+        transaction.add(
+          createSetAuthorityInstruction(
+            mintKeypair.publicKey,
+            publicKey,
+            AuthorityType.FreezeAccount,
+            null
+          )
+        );
+      }
+
+      const signature = await sendTransaction(transaction, connection, {
+        signers: [mintKeypair],
+      });
+
+      await connection.confirmTransaction(signature, 'confirmed');
+      toast.dismiss();
+      toast.success('Custom SPL token created');
+      setCustomMintResult({
+        mint: mintKeypair.publicKey.toBase58(),
+        signature,
+      });
+    } catch (error) {
+      toast.dismiss();
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to create custom token. Please try again.'
+      );
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Custom mint error:', error);
+      }
+    } finally {
+      setIsCreatingCustomToken(false);
+    }
+  };
 
   const updateLogoPreview = (file: File | undefined) => {
     if (file) {
@@ -708,6 +978,83 @@ export default function CreatePool() {
                     </div>
                   </div>
 
+                  {/* Custom SPL Builder */}
+                  <div className="bg-card/50 backdrop-blur-sm rounded-xl p-8 border border-primary/20 shadow-lg">
+                    <div className="flex flex-wrap gap-4 items-center justify-between mb-4">
+                      <div>
+                        <h2 className="text-2xl font-bold flex items-center gap-2">
+                          <Droplet className="h-5 w-5 text-primary" />
+                          Custom SPL Builder
+                        </h2>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Mint a bespoke SPL token using the advanced parameters above. We&apos;ll create the mint,
+                          fund your wallet with the full supply, and optionally revoke authorities.
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        onClick={handleCreateCustomMint}
+                        disabled={isCreatingCustomToken}
+                      >
+                        {isCreatingCustomToken ? 'Creating...' : 'Create Custom SPL'}
+                      </Button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="p-4 rounded-lg border border-border/50 bg-background/50">
+                        <h3 className="text-sm font-semibold mb-2">What happens?</h3>
+                        <ul className="text-sm text-muted-foreground space-y-2 list-disc list-inside">
+                          <li>We initialize a brand new SPL mint with your decimals and authorities.</li>
+                          <li>Full supply is minted straight into your connected wallet.</li>
+                          <li>Authorities are revoked based on the toggles above for true trustlessness.</li>
+                        </ul>
+                      </div>
+
+                      <div className="p-4 rounded-lg border border-border/50 bg-background/50">
+                        <h3 className="text-sm font-semibold mb-2">After minting</h3>
+                        <p className="text-sm text-muted-foreground">
+                          Once the SPL token exists, you can jump directly into Meteora to seed liquidity, or use
+                          Pump.fun launches as usual. Everything feeds back into your Studio ledger automatically.
+                        </p>
+                      </div>
+                    </div>
+
+                    {customMintResult && (
+                      <div className="mt-6 rounded-lg border border-green-500/30 bg-green-500/5 p-4 space-y-3">
+                        <div className="flex items-center gap-2">
+                          <BadgeCheck className="h-4 w-4 text-green-500" />
+                          <p className="text-sm font-semibold">SPL Token Ready</p>
+                        </div>
+                        <div className="text-sm font-mono break-all">
+                          Mint: {customMintResult.mint}
+                        </div>
+                        <div className="text-xs text-muted-foreground break-all">
+                          Tx Signature: {customMintResult.signature}
+                        </div>
+                        <div className="flex flex-wrap gap-3">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => navigator.clipboard.writeText(customMintResult.mint)}
+                          >
+                            Copy Mint
+                          </Button>
+                          <Button type="button" variant="outline" onClick={() => navigator.clipboard.writeText(customMintResult.signature)}>
+                            Copy Tx Signature
+                          </Button>
+                          <Button
+                            type="button"
+                            onClick={() => setMeteoraModalOpen(true)}
+                            className="flex items-center gap-2"
+                          >
+                            <Rocket className="h-4 w-4" />
+                            Seed Liquidity on Meteora
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   {/* Launch Configuration */}
                   <div className="bg-card/50 backdrop-blur-sm rounded-xl p-8 border border-border/50 shadow-lg">
                      <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
@@ -815,6 +1162,14 @@ export default function CreatePool() {
           )}
         </main>
       </div>
+
+      {meteoraModalOpen && (
+        <MeteoraPairingModal
+          open={meteoraModalOpen}
+          onOpenChange={setMeteoraModalOpen}
+          mintAddress={customMintResult?.mint}
+        />
+      )}
     </>
   );
 }
@@ -830,6 +1185,7 @@ const SubmitButton = ({ isSubmitting }: { isSubmitting: boolean }) => {
       </Button>
     );
   }
+
 
   return (
     <Button className="w-full py-6 text-lg font-bold bg-green-500 hover:bg-green-600 text-white" type="submit" disabled={isSubmitting}>

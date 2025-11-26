@@ -7,6 +7,8 @@ import { useUser } from '@clerk/nextjs';
 import { useEffect, useState } from 'react';
 import type { Wallet } from '@/lib/supabase';
 
+const CLERK_ENABLED = process.env.NEXT_PUBLIC_ENABLE_CLERK === 'true';
+
 type UserWallet = {
   id: string;
   publicKey: string;
@@ -23,6 +25,13 @@ export function useUserWallet() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!CLERK_ENABLED) {
+      setWallet(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
     if (!isLoaded) {
       return;
     }

@@ -344,9 +344,13 @@ export const TopTokensSwap: React.FC = () => {
                       <div className="flex justify-between text-sm text-muted-foreground mb-2">
                         <span>Amount ({mode === 'buy' ? 'SOL' : 'TOKENS'})</span>
                         {mode === 'buy' && solBalance !== null && (
-                          <span className="flex items-center gap-1">
-                            <Wallet className="w-3 h-3" />
-                            {solBalance.toFixed(4)} SOL
+                          <span className="flex items-center gap-1.5">
+                            <img 
+                              src="/solana-sol-logo.png" 
+                              alt="SOL" 
+                              className="w-4 h-4 rounded-full object-contain"
+                            />
+                            {solBalance.toFixed(5)} SOL
                           </span>
                         )}
                       </div>

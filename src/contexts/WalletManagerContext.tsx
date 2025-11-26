@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { useWallet } from '@jup-ag/wallet-adapter';
 import { useUser } from '@clerk/nextjs';
 
+const CLERK_ENABLED = process.env.NEXT_PUBLIC_ENABLE_CLERK === 'true';
+
 export type WalletGroup = {
   id: string;
   name: string;
@@ -51,6 +53,8 @@ const WalletManagerContext = createContext<WalletManagerContextType | null>(null
 export function WalletManagerProvider({ children }: { children: React.ReactNode }) {
   const { publicKey } = useWallet();
   const { isLoaded, isSignedIn } = useUser();
+  const clerkReady = CLERK_ENABLED ? isLoaded : true;
+  const isClerkAuthenticated = CLERK_ENABLED && isSignedIn;
   const [persistedWallets, setPersistedWallets] = useState<ManagedWallet[]>([]);
   const [connectedWallet, setConnectedWallet] = useState<ManagedWallet | null>(null);
   const [groups, setGroups] = useState<WalletGroup[]>([]);
@@ -95,9 +99,9 @@ export function WalletManagerProvider({ children }: { children: React.ReactNode 
   );
 
   useEffect(() => {
-    if (!isLoaded) return;
+    if (!clerkReady) return;
 
-    if (!isSignedIn) {
+    if (!isClerkAuthenticated) {
       const savedWallets = localStorage.getItem('managed_wallets');
       const savedGroups = localStorage.getItem('wallet_groups');
       const savedActive = localStorage.getItem('active_wallets');
@@ -152,14 +156,14 @@ export function WalletManagerProvider({ children }: { children: React.ReactNode 
         }
       }
     })();
-  }, [isLoaded, isSignedIn, mapApiWallet]);
+  }, [clerkReady, isClerkAuthenticated, mapApiWallet]);
 
   useEffect(() => {
-    if (!isSignedIn) {
+    if (!isClerkAuthenticated) {
       localStorage.setItem('managed_wallets', JSON.stringify(persistedWallets));
       localStorage.setItem('wallet_groups', JSON.stringify(groups));
     }
-  }, [persistedWallets, groups, isSignedIn]);
+  }, [persistedWallets, groups, isClerkAuthenticated]);
 
   useEffect(() => {
     localStorage.setItem('active_wallets', JSON.stringify(activeWallets));
@@ -167,7 +171,7 @@ export function WalletManagerProvider({ children }: { children: React.ReactNode 
 
   const addWallet = useCallback(
     async (wallet: AddWalletPayload): Promise<string> => {
-      if (isSignedIn) {
+      if (isClerkAuthenticated) {
         const response = await fetch('/api/wallets', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -193,12 +197,12 @@ export function WalletManagerProvider({ children }: { children: React.ReactNode 
       setPersistedWallets(prev => [...prev, newWallet]);
       return id;
     },
-    [isSignedIn, mapApiWallet]
+    [isClerkAuthenticated, mapApiWallet]
   );
 
   const removeWallet = useCallback(
     async (id: string) => {
-      if (isSignedIn) {
+      if (isClerkAuthenticated) {
         await fetch(`/api/wallets/${id}`, { method: 'DELETE' });
       }
       setPersistedWallets(prev => prev.filter(w => w.id !== id));
@@ -211,7 +215,7 @@ export function WalletManagerProvider({ children }: { children: React.ReactNode 
         }))
       );
     },
-    [isSignedIn]
+    [isClerkAuthenticated]
   );
 
   const updateWallet = useCallback((id: string, updates: Partial<ManagedWallet>) => {

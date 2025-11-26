@@ -1,21 +1,21 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import OPENAI from 'openai';
+import OpenAI from 'openai';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const apiKey = process.env.GEMINI_API_KEY || process.env.GEMENI_API_KEY;
+  const gatewayUrl = process.env.VERCEL_AI_GATEWAY_URL;
+  const gatewayApiKey = process.env.VERCEL_AI_GATEWAY_API_KEY;
 
-  if (!apiKey) {
-    return res.status(500).json({ error: 'Missing GEMINI_API_KEY in environment variables' });
+  if (!gatewayUrl || !gatewayApiKey) {
+    return res.status(500).json({ error: 'Missing Vercel AI Gateway configuration' });
   }
 
-  // Initialize OpenAI client with Google's endpoint for Gemini
-  const openai = new OPENAI.OpenAI({
-    apiKey: apiKey,
-    baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/"
+  const openai = new OpenAI({
+    apiKey: gatewayApiKey,
+    baseURL: gatewayUrl,
   });
 
   try {
@@ -32,10 +32,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       Ensure the SVG is scalable, uses vibrant colors suitable for a meme coin or tech project, and is roughly square aspect ratio (viewBox="0 0 512 512").`;
 
       const completion = await openai.chat.completions.create({
-        model: "gemini-1.5-flash",
+        model: 'google/gemini-2.5-flash-lite',
         messages: [
-          { role: "system", content: "You are a professional graphic designer specializing in SVG logos." },
-          { role: "user", content: svgPrompt },
+          { role: 'system', content: 'You are a professional graphic designer specializing in SVG logos.' },
+          { role: 'user', content: svgPrompt },
         ],
       });
 
@@ -51,10 +51,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       Keep it under 280 characters (Twitter style) but punchy. Also suggest a ticker symbol if one fits.`;
 
       const completion = await openai.chat.completions.create({
-        model: "gemini-1.5-flash",
+        model: 'google/gemini-2.5-flash-lite',
         messages: [
-          { role: "system", content: "You are a creative marketing expert." },
-          { role: "user", content: textPrompt },
+          { role: 'system', content: 'You are a creative marketing expert.' },
+          { role: 'user', content: textPrompt },
         ],
       });
 

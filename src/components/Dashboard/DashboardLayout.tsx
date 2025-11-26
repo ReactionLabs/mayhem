@@ -4,7 +4,7 @@ import { Sidebar } from '@/components/Layout/Sidebar';
 import { WatchlistSidebar } from './WatchlistSidebar';
 import { TradePanel } from './TradePanel';
 import Header from '@/components/Header';
-import { ExtensionBridge } from '@/components/ExtensionBridge';
+// ExtensionBridge removed - focusing on core functionality
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -38,9 +38,6 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, clas
 
         {/* Right Sidebar: Execution Panel */}
         <aside className="hidden xl:flex flex-col w-[320px] border-l border-border bg-card shadow-xl z-20">
-          <div className="p-4 border-b border-border">
-            <ExtensionBridge />
-          </div>
           <TradePanel activeMint={activeMint} />
         </aside>
       </div>

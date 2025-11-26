@@ -78,7 +78,7 @@ export const TradePanel: React.FC<TradePanelProps> = memo(({ activeMint }) => {
   // Fetch balance for the current wallet
   useEffect(() => {
     if (!currentWallet || !currentWallet.address || !connection) {
-      setBalance(null);
+      setBalance(0); // Show 0.00000 instead of null
       return;
     }
 
@@ -94,7 +94,7 @@ export const TradePanel: React.FC<TradePanelProps> = memo(({ activeMint }) => {
           console.error('Failed to fetch balance', e);
         }
         if (!cancelled) {
-          setBalance(null);
+          setBalance(0); // Default to 0 instead of null
         }
       }
     };
@@ -305,8 +305,13 @@ export const TradePanel: React.FC<TradePanelProps> = memo(({ activeMint }) => {
           <div className="mt-3 p-2 rounded-lg bg-primary/5 border border-primary/20">
             <div className="flex justify-between items-center">
               <span className="text-[10px] text-muted-foreground uppercase font-bold">Total Active Balance</span>
-              <span className="text-sm font-mono font-bold text-primary">
-                {totalActiveBalance.toFixed(4)} SOL
+              <span className="text-sm font-mono font-bold text-primary flex items-center gap-1.5">
+                <img 
+                  src="/solana-sol-logo.png" 
+                  alt="SOL" 
+                  className="w-4 h-4 rounded-full object-contain"
+                />
+                {totalActiveBalance.toFixed(5)} SOL
               </span>
             </div>
             <div className="text-[10px] text-muted-foreground mt-1">
@@ -326,7 +331,14 @@ export const TradePanel: React.FC<TradePanelProps> = memo(({ activeMint }) => {
 
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="text-xs font-medium text-muted-foreground">Amount (SOL)</label>
+              <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                <img 
+                  src="/solana-sol-logo.png" 
+                  alt="SOL" 
+                  className="w-3 h-3 rounded-full object-contain"
+                />
+                Amount (SOL)
+              </label>
               <div className="relative">
                 <Input 
                   type="number" 

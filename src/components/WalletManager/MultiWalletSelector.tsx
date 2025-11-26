@@ -62,7 +62,7 @@ export const MultiWalletSelector: React.FC = () => {
           </h3>
           <p className="text-xs text-muted-foreground mt-1">
             {activeWallets.length} of {wallets.length} active
-            {totalBalance > 0 && ` • ${totalBalance.toFixed(3)} SOL total`}
+            {totalBalance > 0 && ` • ${totalBalance.toFixed(5)} SOL total`}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -195,7 +195,7 @@ const WalletCard: React.FC<WalletCardProps> = ({
 
           <div className="text-right shrink-0">
             <div className="text-sm font-semibold">
-              {wallet.balance !== null ? `${wallet.balance.toFixed(3)} SOL` : '--'}
+              {wallet.balance !== null && wallet.balance >= 0 ? `${wallet.balance.toFixed(5)} SOL` : '0.00000 SOL'}
             </div>
             {isActive && (
               <div className="flex items-center gap-1 text-[10px] text-green-500 mt-1">

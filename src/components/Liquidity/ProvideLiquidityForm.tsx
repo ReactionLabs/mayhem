@@ -193,9 +193,13 @@ export const ProvideLiquidityForm: React.FC<ProvideLiquidityFormProps> = ({ pool
               className="text-lg"
             />
             {pool.tokenB.mint === 'So11111111111111111111111111111111111111112' && solBalance !== null && (
-              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                <Wallet className="w-3 h-3" />
-                Balance: {solBalance.toFixed(4)} SOL
+              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1.5">
+                <img 
+                  src="/solana-sol-logo.png" 
+                  alt="SOL" 
+                  className="w-3 h-3 rounded-full object-contain"
+                />
+                Balance: {solBalance.toFixed(5)} SOL
               </p>
             )}
           </div>
