@@ -1,34 +1,17 @@
-import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 
-// Define public routes that don't require authentication
-const isPublicRoute = createRouteMatcher([
-  '/',
-  '/api/webhooks/clerk',
-  '/api/search-token',
-  '/api/token-ath',
-  '/api/trade-pump',
-  '/api/upload',
-  '/api/send-transaction',
-  '/api/save-token-csv',
-  '/api/my-tokens',
-  '/token/(.*)',
-  '/sign-in(.*)',
-  '/sign-up(.*)',
-]);
-
-export default clerkMiddleware(async (auth, req) => {
-  // Protect all routes except public ones
-  if (!isPublicRoute(req)) {
-    await auth.protect();
-  }
-});
+// Wallet-only middleware - no authentication required
+// All routes are public, wallet connection is handled client-side
+export function middleware(request: NextRequest) {
+  // Allow all requests - wallet auth is client-side only
+  return NextResponse.next();
+}
 
 export const config = {
   matcher: [
-    // Skip Next.js internals and all static files, unless found in search params
+    // Skip Next.js internals and all static files
     '/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
-    // Always run for API routes
-    '/(api|trpc)(.*)',
   ],
 };
 

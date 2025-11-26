@@ -1,8 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { useWallet } from '@jup-ag/wallet-adapter';
-import { useUser } from '@clerk/nextjs';
-
-const CLERK_ENABLED = process.env.NEXT_PUBLIC_ENABLE_CLERK === 'true';
+// Clerk removed - wallet-only authentication
 
 export type WalletGroup = {
   id: string;
@@ -52,9 +50,6 @@ const WalletManagerContext = createContext<WalletManagerContextType | null>(null
 
 export function WalletManagerProvider({ children }: { children: React.ReactNode }) {
   const { publicKey } = useWallet();
-  const { isLoaded, isSignedIn } = useUser();
-  const clerkReady = CLERK_ENABLED ? isLoaded : true;
-  const isClerkAuthenticated = CLERK_ENABLED && isSignedIn;
   const [persistedWallets, setPersistedWallets] = useState<ManagedWallet[]>([]);
   const [connectedWallet, setConnectedWallet] = useState<ManagedWallet | null>(null);
   const [groups, setGroups] = useState<WalletGroup[]>([]);
@@ -98,72 +93,48 @@ export function WalletManagerProvider({ children }: { children: React.ReactNode 
     []
   );
 
+  // Load wallets from localStorage (wallet-only mode)
   useEffect(() => {
-    if (!clerkReady) return;
+    const savedWallets = localStorage.getItem('managed_wallets');
+    const savedGroups = localStorage.getItem('wallet_groups');
+    const savedActive = localStorage.getItem('active_wallets');
 
-    if (!isClerkAuthenticated) {
-      const savedWallets = localStorage.getItem('managed_wallets');
-      const savedGroups = localStorage.getItem('wallet_groups');
-      const savedActive = localStorage.getItem('active_wallets');
-
-      if (savedWallets) {
-        try {
-          setPersistedWallets(JSON.parse(savedWallets));
-        } catch (e) {
-          if (process.env.NODE_ENV === 'development') {
-            console.error('Failed to load wallets:', e);
-          }
-        }
-      }
-
-      if (savedGroups) {
-        try {
-          setGroups(JSON.parse(savedGroups));
-        } catch (e) {
-          if (process.env.NODE_ENV === 'development') {
-            console.error('Failed to load groups:', e);
-          }
-        }
-      }
-
-      if (savedActive) {
-        try {
-          setActiveWallets(JSON.parse(savedActive));
-        } catch (e) {
-          if (process.env.NODE_ENV === 'development') {
-            console.error('Failed to load active wallets:', e);
-          }
-        }
-      }
-      return;
-    }
-
-    (async () => {
+    if (savedWallets) {
       try {
-        const response = await fetch('/api/wallets');
-        if (!response.ok) {
-          throw new Error('Failed to load wallets');
-        }
-        const data = await response.json();
-        const mapped = (data.wallets || []).map(mapApiWallet);
-        setPersistedWallets(mapped);
-        if (!activeWallets.length && mapped.length) {
-          setActiveWallets(mapped.slice(0, 3).map(w => w.id));
-        }
-      } catch (error) {
+        setPersistedWallets(JSON.parse(savedWallets));
+      } catch (e) {
         if (process.env.NODE_ENV === 'development') {
-          console.error('Wallet fetch error:', error);
+          console.error('Failed to load wallets:', e);
         }
       }
-    })();
-  }, [clerkReady, isClerkAuthenticated, mapApiWallet]);
-
-  useEffect(() => {
-    if (!isClerkAuthenticated) {
-      localStorage.setItem('managed_wallets', JSON.stringify(persistedWallets));
-      localStorage.setItem('wallet_groups', JSON.stringify(groups));
     }
-  }, [persistedWallets, groups, isClerkAuthenticated]);
+
+    if (savedGroups) {
+      try {
+        setGroups(JSON.parse(savedGroups));
+      } catch (e) {
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Failed to load groups:', e);
+        }
+      }
+    }
+
+    if (savedActive) {
+      try {
+        setActiveWallets(JSON.parse(savedActive));
+      } catch (e) {
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Failed to load active wallets:', e);
+        }
+      }
+    }
+  }, []);
+
+  // Persist wallets to localStorage
+  useEffect(() => {
+    localStorage.setItem('managed_wallets', JSON.stringify(persistedWallets));
+    localStorage.setItem('wallet_groups', JSON.stringify(groups));
+  }, [persistedWallets, groups]);
 
   useEffect(() => {
     localStorage.setItem('active_wallets', JSON.stringify(activeWallets));
@@ -171,40 +142,23 @@ export function WalletManagerProvider({ children }: { children: React.ReactNode 
 
   const addWallet = useCallback(
     async (wallet: AddWalletPayload): Promise<string> => {
-      if (isClerkAuthenticated) {
-        const response = await fetch('/api/wallets', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(wallet),
-        });
-        if (!response.ok) {
-          const error = await response.json().catch(() => ({}));
-          throw new Error(error.error || 'Failed to add wallet');
-        }
-        const data = await response.json();
-        const mapped = mapApiWallet(data.wallet);
-        setPersistedWallets(prev => [...prev, mapped]);
-        return mapped.id;
-      }
-
       const id = `${wallet.type}-${Date.now()}`;
       const newWallet: ManagedWallet = {
         ...wallet,
         id,
         balance: null,
         isActive: false,
+        apiKey: wallet.apiKey || undefined,
+        privateKey: wallet.privateKey || undefined,
       };
       setPersistedWallets(prev => [...prev, newWallet]);
       return id;
     },
-    [isClerkAuthenticated, mapApiWallet]
+    []
   );
 
   const removeWallet = useCallback(
     async (id: string) => {
-      if (isClerkAuthenticated) {
-        await fetch(`/api/wallets/${id}`, { method: 'DELETE' });
-      }
       setPersistedWallets(prev => prev.filter(w => w.id !== id));
       setActiveWallets(prev => prev.filter(wid => wid !== id));
       setGroups(prev =>
@@ -215,12 +169,15 @@ export function WalletManagerProvider({ children }: { children: React.ReactNode 
         }))
       );
     },
-    [isClerkAuthenticated]
+    []
   );
 
   const updateWallet = useCallback((id: string, updates: Partial<ManagedWallet>) => {
-    setWallets(prev => prev.map(w => w.id === id ? { ...w, ...updates } : w));
-  }, []);
+    setPersistedWallets(prev => prev.map(w => w.id === id ? { ...w, ...updates } : w));
+    if (connectedWallet?.id === id) {
+      setConnectedWallet(prev => prev ? { ...prev, ...updates } : prev);
+    }
+  }, [connectedWallet]);
 
   const toggleWalletActive = useCallback((id: string) => {
     setActiveWallets(prev => 

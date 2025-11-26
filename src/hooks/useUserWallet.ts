@@ -1,86 +1,31 @@
 /**
- * Hook to get the authenticated user's primary wallet
- * Uses Clerk for auth and Supabase for wallet data
+ * Hook to get the connected wallet
+ * Wallet-only authentication - uses Jupiter's Unified Wallet Adapter
  */
 
-import { useUser } from '@clerk/nextjs';
-import { useEffect, useState } from 'react';
-import type { Wallet } from '@/lib/supabase';
-
-const CLERK_ENABLED = process.env.NEXT_PUBLIC_ENABLE_CLERK === 'true';
-
-type UserWallet = {
-  id: string;
-  publicKey: string;
-  apiKey: string;
-  label: string;
-  isPrimary: boolean;
-  createdAt: string;
-} | null;
+import { useWallet } from '@jup-ag/wallet-adapter';
+import { useMemo } from 'react';
 
 export function useUserWallet() {
-  const { user, isLoaded } = useUser();
-  const [wallet, setWallet] = useState<UserWallet>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { publicKey, connected } = useWallet();
 
-  useEffect(() => {
-    if (!CLERK_ENABLED) {
-      setWallet(null);
-      setError(null);
-      setLoading(false);
-      return;
-    }
-
-    if (!isLoaded) {
-      return;
-    }
-
-    if (!user) {
-      setWallet(null);
-      setLoading(false);
-      return;
-    }
-
-    // Fetch user's wallet
-    const fetchWallet = async () => {
-      try {
-        setLoading(true);
-        const response = await fetch('/api/user/wallet');
-        
-        if (!response.ok) {
-          if (response.status === 404) {
-            // User exists but no wallet yet (shouldn't happen with webhook, but handle gracefully)
-            setWallet(null);
-            setError('Wallet not found. Please contact support.');
-          } else {
-            throw new Error('Failed to fetch wallet');
-          }
-          return;
-        }
-
-        const data = await response.json();
-        setWallet(data.wallet);
-        setError(null);
-      } catch (err) {
-        if (process.env.NODE_ENV === 'development') {
-          console.error('Error fetching wallet:', err);
-        }
-        setError(err instanceof Error ? err.message : 'Failed to load wallet');
-        setWallet(null);
-      } finally {
-        setLoading(false);
-      }
+  const wallet = useMemo(() => {
+    if (!publicKey || !connected) return null;
+    
+    return {
+      id: publicKey.toBase58(),
+      publicKey: publicKey.toBase58(),
+      address: publicKey.toBase58(),
+      isPrimary: true,
+      connected: true,
     };
-
-    fetchWallet();
-  }, [user, isLoaded]);
+  }, [publicKey, connected]);
 
   return {
     wallet,
-    loading,
-    error,
-    isAuthenticated: !!user,
+    loading: false,
+    error: null,
+    isAuthenticated: connected && !!publicKey,
   };
 }
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useUnifiedWalletContext, useWallet } from '@jup-ag/wallet-adapter';
-import { useUser, SignInButton, SignUpButton, UserButton } from '@clerk/nextjs';
+// Clerk removed - wallet-only authentication
 import Link from 'next/link';
 import { Button } from './ui/button';
 import { useMemo, useState, useCallback, useEffect } from 'react';
@@ -25,16 +25,10 @@ import { debounce } from '@/lib/debounce';
 /**
  * Header Component
  * 
- * Integrates Clerk (identity) and Solana wallets (blockchain) as first-class features.
- * - Clerk handles authentication and user sessions
- * - Wallets handle blockchain address ownership and transaction signing
- * - Both are displayed side-by-side in the header for native UX
+ * Wallet-only authentication using Jupiter's Unified Wallet Adapter.
+ * Users connect their Solana wallet to access the platform.
  */
 export const Header = () => {
-  // Clerk: Identity and session management
-  const { user, isSignedIn } = useUser();
-  const clerkEnabled = process.env.NEXT_PUBLIC_ENABLE_CLERK === 'true';
-  
   // Solana Wallet: Blockchain connection
   const walletContext = useUnifiedWalletContext();
   const wallet = useWallet();
@@ -249,32 +243,6 @@ export const Header = () => {
         )}
 
         <ThemeToggle />
-
-        {/* Clerk Identity Section */}
-        {clerkEnabled && (
-          !isSignedIn ? (
-            <div className="flex items-center gap-2">
-              <SignInButton mode="modal">
-                <Button variant="ghost" size="sm">
-                  Sign In
-                </Button>
-              </SignInButton>
-              <SignUpButton mode="modal">
-                <Button size="sm">
-                  Sign Up
-                </Button>
-              </SignUpButton>
-            </div>
-          ) : (
-            <UserButton 
-              appearance={{
-                elements: {
-                  avatarBox: 'w-8 h-8',
-                },
-              }}
-            />
-          )
-        )}
 
         {/* Solana Wallet Section */}
         {walletAddress ? (
