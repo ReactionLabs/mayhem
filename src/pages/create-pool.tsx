@@ -32,6 +32,7 @@ import {
   Droplet,
   Rocket,
   BadgeCheck,
+  Copy,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/Checkbox';
@@ -401,6 +402,7 @@ export default function CreatePool() {
   const [meteoraModalOpen, setMeteoraModalOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [logoDragActive, setLogoDragActive] = useState(false);
+  const [copyTokenAddress, setCopyTokenAddress] = useState('');
 
   const form = useForm({
     defaultValues: {
@@ -677,6 +679,49 @@ export default function CreatePool() {
     }
   };
 
+  const copyFromExistingToken = async () => {
+    if (!copyTokenAddress.trim()) return;
+
+    try {
+      setIsLoading(true);
+      toast.loading('Fetching token data...');
+
+      // Validate the address format
+      const tokenPubkey = new PublicKey(copyTokenAddress.trim());
+
+      // Fetch token metadata using our existing API
+      const response = await fetch(`/api/token/${copyTokenAddress}?includeMetadata=true`);
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch token data');
+      }
+
+      const tokenData = await response.json();
+
+      // Update form with copied data
+      form.setFieldValue('tokenName', tokenData.name || '');
+      form.setFieldValue('tokenSymbol', tokenData.symbol || '');
+      form.setFieldValue('description', tokenData.description || '');
+      form.setFieldValue('totalSupply', tokenData.supply || 1000000000);
+
+      // If there's an image, we could try to fetch it, but for now just show success
+      toast.dismiss();
+      toast.success('Token settings copied successfully!', {
+        description: `Copied from ${tokenData.name || 'Unknown Token'}`
+      });
+
+      setCopyTokenAddress('');
+
+    } catch (error) {
+      toast.dismiss();
+      toast.error('Failed to copy token data', {
+        description: error instanceof Error ? error.message : 'Please check the contract address'
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const updateLogoPreview = (file: File | undefined) => {
     if (file) {
       const reader = new FileReader();
@@ -724,6 +769,35 @@ export default function CreatePool() {
                   }}
                   className="space-y-8"
                 >
+                  {/* Copy Token Feature */}
+                  <div className="bg-gradient-to-r from-purple-500/10 to-blue-500/10 backdrop-blur-sm rounded-xl p-6 border border-purple-500/20 shadow-lg">
+                    <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                      <Copy className="h-4 w-4 text-purple-500" />
+                      Copy from Existing Token
+                    </h3>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Paste any Solana token contract address to copy its settings and metadata
+                    </p>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Paste token contract address (CA)..."
+                        className="flex-1"
+                        onChange={(e) => setCopyTokenAddress(e.target.value)}
+                        value={copyTokenAddress}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={copyFromExistingToken}
+                        disabled={!copyTokenAddress || isLoading}
+                        className="flex items-center gap-2"
+                      >
+                        <Copy className="h-4 w-4" />
+                        Copy Settings
+                      </Button>
+                    </div>
+                  </div>
+
                   <div className="bg-card/50 backdrop-blur-sm rounded-xl p-8 border border-border/50 shadow-lg">
                     <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
                       <Coins className="h-5 w-5 text-primary" />
@@ -733,7 +807,12 @@ export default function CreatePool() {
                     <div className="grid grid-cols-1 gap-6">
                       <div className="space-y-4">
                         <div>
-                          <label className="block text-sm font-medium text-muted-foreground mb-1">Token Name*</label>
+                          <label className="block text-sm font-medium text-muted-foreground mb-1 flex items-center gap-2">
+                            Token Name*
+                            <span className="text-xs bg-blue-500/10 text-blue-500 px-2 py-1 rounded-full">
+                              Keep it catchy & memorable
+                            </span>
+                          </label>
                           {form.Field({
                             name: 'tokenName',
                             children: (field) => (
@@ -751,7 +830,12 @@ export default function CreatePool() {
                         </div>
 
                         <div>
-                          <label className="block text-sm font-medium text-muted-foreground mb-1">Token Symbol*</label>
+                          <label className="block text-sm font-medium text-muted-foreground mb-1 flex items-center gap-2">
+                            Token Symbol*
+                            <span className="text-xs bg-green-500/10 text-green-500 px-2 py-1 rounded-full">
+                              2-5 characters, all caps
+                            </span>
+                          </label>
                           {form.Field({
                             name: 'tokenSymbol',
                             children: (field) => (
@@ -761,7 +845,7 @@ export default function CreatePool() {
                                 className="w-full p-3 bg-background border border-input rounded-lg focus:ring-2 focus:ring-primary"
                                 placeholder="e.g. FUN"
                                 value={field.state.value}
-                                onChange={(e) => field.handleChange(e.target.value)}
+                                onChange={(e) => field.handleChange(e.target.value.toUpperCase())}
                                 required
                               />
                             ),

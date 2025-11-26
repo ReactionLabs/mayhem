@@ -7,7 +7,7 @@ import { useMemo, useState, useCallback, useEffect } from 'react';
 import { shortenAddress } from '@/lib/utils';
 import { ThemeToggle } from './ThemeToggle';
 import { Input } from './ui/input';
-import { Search, User, LogOut, Wallet, Copy, Settings, Coins } from 'lucide-react';
+import { Search, User, LogOut, Wallet, Copy, Settings, Coins, Rocket } from 'lucide-react';
 import { useRouter } from 'next/router';
 import {
   DropdownMenu,
@@ -257,6 +257,9 @@ export const Header = () => {
         <Link href="/ai-vision" className="hidden md:block text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
           AI Vision
         </Link>
+        <Link href="/harry" className="hidden md:block text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+          Harry Agent
+        </Link>
       </div>
 
       {/* Global Search Bar */}
@@ -302,6 +305,14 @@ export const Header = () => {
             </div>
           </div>
         )}
+
+        {/* Launch Token Button - Prominent */}
+        <Button size="sm" className="hidden md:flex items-center gap-2 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground shadow-lg" asChild>
+          <Link href="/create-pool">
+            <Rocket className="w-4 h-4" />
+            Launch Token
+          </Link>
+        </Button>
 
         <ThemeToggle />
 
