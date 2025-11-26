@@ -93,6 +93,44 @@ export function WalletManagerProvider({ children }: { children: React.ReactNode 
     []
   );
 
+  const refreshBalances = useCallback(async () => {
+    const allWallets = [...persistedWallets, ...(connectedWallet ? [connectedWallet] : [])];
+
+    if (allWallets.length === 0) return;
+
+    // Use the new service layer for balance fetching
+    const { solanaService } = await import('@/services/blockchain');
+    
+    const balancePromises = allWallets.map(async (wallet) => {
+      try {
+        const balance = await solanaService.getBalance(wallet.address);
+        return {
+          id: wallet.id,
+          balance,
+        };
+      } catch (error) {
+        if (process.env.NODE_ENV === 'development') {
+          console.error(`Failed to fetch balance for ${wallet.address}:`, error);
+        }
+        return { id: wallet.id, balance: null };
+      }
+    });
+
+    const results = await Promise.all(balancePromises);
+    setPersistedWallets(prev =>
+      prev.map(w => {
+        const result = results.find(r => r.id === w.id);
+        return result ? { ...w, balance: result.balance } : w;
+      })
+    );
+    if (connectedWallet) {
+      const result = results.find(r => r.id === connectedWallet.id);
+      if (result) {
+        setConnectedWallet(prev => (prev ? { ...prev, balance: result.balance } : prev));
+      }
+    }
+  }, [persistedWallets, connectedWallet]);
+
   // Load wallets from localStorage (wallet-only mode)
   useEffect(() => {
     const savedWallets = localStorage.getItem('managed_wallets');
@@ -152,6 +190,7 @@ export function WalletManagerProvider({ children }: { children: React.ReactNode 
         privateKey: wallet.privateKey || undefined,
       };
       setPersistedWallets(prev => [...prev, newWallet]);
+      // Refresh balances after adding wallet (will be triggered by the useEffect)
       return id;
     },
     []
@@ -214,50 +253,27 @@ export function WalletManagerProvider({ children }: { children: React.ReactNode 
     // TODO: Implement actual consolidation logic
   }, [groups]);
 
-  const refreshBalances = useCallback(async () => {
-    const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.mainnet-beta.solana.com';
-    const allWallets = [...persistedWallets, ...(connectedWallet ? [connectedWallet] : [])];
+  // Auto-refresh balances when wallets are loaded or connected
+  useEffect(() => {
+    // Only refresh if we have wallets to check
+    const hasWallets = persistedWallets.length > 0 || connectedWallet !== null;
+    if (!hasWallets) return;
 
-    const balancePromises = allWallets.map(async (wallet) => {
-      try {
-        const response = await fetch(RPC_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            jsonrpc: '2.0',
-            id: 1,
-            method: 'getBalance',
-            params: [wallet.address],
-          }),
-        });
-        
-        const data = await response.json();
-        return {
-          id: wallet.id,
-          balance: data.result?.value ? data.result.value / 1e9 : null,
-        };
-      } catch (error) {
-        if (process.env.NODE_ENV === 'development') {
-          console.error(`Failed to fetch balance for ${wallet.address}:`, error);
-        }
-        return { id: wallet.id, balance: null };
-      }
-    });
+    // Initial fetch after a short delay to ensure state is settled
+    const timeoutId = setTimeout(() => {
+      refreshBalances();
+    }, 500);
 
-    const results = await Promise.all(balancePromises);
-    setPersistedWallets(prev =>
-      prev.map(w => {
-        const result = results.find(r => r.id === w.id);
-        return result ? { ...w, balance: result.balance } : w;
-      })
-    );
-    if (connectedWallet) {
-      const result = results.find(r => r.id === connectedWallet.id);
-      if (result) {
-        setConnectedWallet(prev => (prev ? { ...prev, balance: result.balance } : prev));
-      }
-    }
-  }, [persistedWallets, connectedWallet]);
+    // Set up periodic refresh every 15 seconds
+    const interval = setInterval(() => {
+      refreshBalances();
+    }, 15000);
+
+    return () => {
+      clearTimeout(timeoutId);
+      clearInterval(interval);
+    };
+  }, [persistedWallets.length, connectedWallet?.id, refreshBalances]);
 
   return (
     <WalletManagerContext.Provider

@@ -8,8 +8,6 @@ import { shortenAddress } from '@/lib/utils';
 import { ThemeToggle } from './ThemeToggle';
 import { Input } from './ui/input';
 import { Search, User, LogOut, Wallet, Copy, Settings, Coins } from 'lucide-react';
-import { useConnection } from '@jup-ag/wallet-adapter';
-import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { useRouter } from 'next/router';
 import {
   DropdownMenu,
@@ -38,39 +36,91 @@ export const Header = () => {
   
   const walletAddress = useMemo(() => publicKey?.toBase58(), [publicKey]);
   const router = useRouter();
-  const { connection } = useConnection();
   const [globalSearch, setGlobalSearch] = useState('');
   const [solBalance, setSolBalance] = useState<number | null>(null);
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
   const [showSolValue, setShowSolValue] = useState(false);
 
-  // Fetch SOL balance for connected wallet
+  // Fetch SOL balance for connected wallet using service layer
   useEffect(() => {
-    if (!publicKey || !connection) {
-      setSolBalance(0); // Show 0.00000 instead of null
+    if (!publicKey) {
+      setSolBalance(null);
+      setIsLoadingBalance(false);
       return;
     }
 
+    let cancelled = false;
+    let retryCount = 0;
+    const maxRetries = 2;
+
     const fetchBalance = async () => {
+      if (cancelled) return;
+      
       setIsLoadingBalance(true);
+      
       try {
-        const balance = await connection.getBalance(publicKey);
-        const solAmount = balance / LAMPORTS_PER_SOL;
-        setSolBalance(solAmount >= 0 ? solAmount : 0);
-      } catch (error) {
-        if (process.env.NODE_ENV === 'development') {
+        // Use the service layer which handles fallbacks automatically
+        const { solanaService } = await import('@/services/blockchain');
+        const balance = await solanaService.getBalance(publicKey.toBase58());
+        
+        if (!cancelled) {
+          setSolBalance(balance >= 0 ? balance : 0);
+          retryCount = 0; // Reset retry count on success
+        }
+      } catch (error: any) {
+        // Check if it's a 403 error - service layer should handle this, but catch just in case
+        const is403 = 
+          error?.code === 403 ||
+          error?.message?.includes('403') ||
+          error?.message?.includes('Access forbidden') ||
+          error?.message?.includes('forbidden');
+        
+        // Only log non-403 errors in development (403s are expected and handled gracefully)
+        if (process.env.NODE_ENV === 'development' && !is403) {
           console.error('Failed to fetch balance:', error);
         }
-        setSolBalance(0); // Default to 0 instead of null
+        
+        // For 403 errors, set balance to null (unavailable) without retrying
+        if (is403 && !cancelled) {
+          setSolBalance(null);
+          return;
+        }
+        
+        // Retry logic for transient errors (not 403s)
+        if (retryCount < maxRetries && !cancelled && !is403) {
+          retryCount++;
+          setTimeout(() => {
+            if (!cancelled) fetchBalance();
+          }, 1000 * retryCount); // Exponential backoff
+        } else if (!cancelled) {
+          // After max retries, set to null to show unavailable
+          setSolBalance(null);
+        }
       } finally {
-        setIsLoadingBalance(false);
+        if (!cancelled) {
+          setIsLoadingBalance(false);
+        }
       }
     };
 
-    fetchBalance();
-    const interval = setInterval(fetchBalance, 30000); // Refresh every 30s
-    return () => clearInterval(interval);
-  }, [publicKey, connection]);
+    // Initial fetch with small delay to avoid race conditions
+    const timeoutId = setTimeout(() => {
+      fetchBalance();
+    }, 300);
+    
+    // Set up polling interval (refresh every 15 seconds)
+    const interval = setInterval(() => {
+      if (!cancelled && publicKey) {
+        fetchBalance();
+      }
+    }, 15000);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+      clearInterval(interval);
+    };
+  }, [publicKey]);
 
   const handleConnectWallet = () => {
     if (setShowModal) {
@@ -192,11 +242,19 @@ export const Header = () => {
   return (
     <header className="w-full px-4 py-3 flex items-center justify-between bg-background/80 backdrop-blur-sm sticky top-0 z-50 border-b border-border">
       {/* Logo Section */}
-      <Link href="/" className="flex items-center shrink-0 mr-4">
-        <span className="whitespace-nowrap text-lg md:text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-neutral-900 to-neutral-600 dark:from-white dark:to-neutral-400">
-          Mayhem
-        </span>
-      </Link>
+      <div className="flex items-center gap-6 shrink-0 mr-4">
+        <Link href="/" className="flex items-center">
+          <span className="whitespace-nowrap text-lg md:text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-neutral-900 to-neutral-600 dark:from-white dark:to-neutral-400">
+            Mayhem
+          </span>
+        </Link>
+        <Link href="/explore" className="hidden md:block text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+          Explore
+        </Link>
+        <Link href="/mania" className="hidden md:block text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+          Mania
+        </Link>
+      </div>
 
       {/* Global Search Bar */}
       <form onSubmit={handleSearch} className="hidden md:flex items-center relative max-w-md w-full mx-4">
@@ -230,12 +288,12 @@ export const Header = () => {
                 Balance
               </span>
               <span className="font-semibold text-sm">
-                {isLoadingBalance ? (
-                  '...'
-                ) : solBalance !== null && solBalance >= 0 ? (
+                {isLoadingBalance && solBalance === null ? (
+                  <span className="animate-pulse">...</span>
+                ) : solBalance !== null ? (
                   `${solBalance.toFixed(5)} SOL`
                 ) : (
-                  '0.00000 SOL'
+                  <span className="text-muted-foreground" title="Balance unavailable">--</span>
                 )}
               </span>
             </div>

@@ -9,6 +9,7 @@ import { useWindowWidthListener } from '@/lib/device';
 import { ThemeProvider } from 'next-themes';
 import { PumpStreamProvider } from '@/contexts/PumpStreamProvider';
 import { WalletManagerProvider } from '@/contexts/WalletManagerContext';
+import { ManiaFeedProvider } from '@/contexts/ManiaFeedProvider';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Inter } from 'next/font/google';
 
@@ -60,8 +61,10 @@ export default function App({ Component, pageProps }: AppProps) {
           >
             <WalletManagerProvider>
               <PumpStreamProvider>
-                <Toaster />
-                <Component {...pageProps} />
+                <ManiaFeedProvider>
+                  <Toaster />
+                  <Component {...pageProps} />
+                </ManiaFeedProvider>
               </PumpStreamProvider>
             </WalletManagerProvider>
           </UnifiedWalletProvider>
