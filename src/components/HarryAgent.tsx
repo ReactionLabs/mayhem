@@ -103,11 +103,22 @@ export const HarryAgent: React.FC = () => {
         actionData: response.data
       });
     } catch (error) {
-      addMessage({
-        role: 'harry',
-        content: `Sorry, I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        type: 'text'
-      });
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+      // Provide helpful guidance for API key setup
+      if (errorMessage.includes('OpenAI API key not configured')) {
+        addMessage({
+          role: 'harry',
+          content: `🤖 **AI Features Not Configured**\n\nTo use my advanced AI capabilities, you need to set up an OpenAI API key:\n\n1. Go to https://platform.openai.com/api-keys\n2. Create a new API key\n3. Add it to your \`.env.local\` file:\n\n\`\`\`\nOPENAI_API_KEY=your_api_key_here\n\`\`\`\n\nOnce configured, I'll be able to generate coins, images, and content! 🚀`,
+          type: 'text'
+        });
+      } else {
+        addMessage({
+          role: 'harry',
+          content: `Sorry, I encountered an error: ${errorMessage}`,
+          type: 'text'
+        });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -120,7 +131,9 @@ export const HarryAgent: React.FC = () => {
     if (cmd.includes('wallet') || cmd.includes('generate wallet')) {
       const wallet = await generateWallet();
       return {
-        message: `✅ **Wallet Generated Successfully!**\n\n**Public Key:** \`${wallet.publicKey}\`\n**Private Key:** \`${wallet.privateKey}\`\n**API Key:** \`${wallet.apiKey}\`\n\n⚠️ **Save these securely!** The private key and API key are shown only once.`,
+        message: wallet.publicKey.startsWith('DemoWallet')
+          ? `🧪 **Demo Wallet Generated!**\n\n**Public Key:** \`${wallet.publicKey}\`\n**Private Key:** \`${wallet.privateKey}\`\n**API Key:** \`${wallet.apiKey}\`\n\n⚠️ **This is demo data for testing.** Real wallet generation requires PumpPortal API connectivity.`
+          : `✅ **Wallet Generated Successfully!**\n\n**Public Key:** \`${wallet.publicKey}\`\n**Private Key:** \`${wallet.privateKey}\`\n**API Key:** \`${wallet.apiKey}\`\n\n⚠️ **Save these securely!** The private key and API key are shown only once.`,
         type: 'action',
         data: { action: 'wallet_generated', wallet }
       };
@@ -245,15 +258,15 @@ export const HarryAgent: React.FC = () => {
                         message.role === 'user'
                           ? 'bg-purple-500 text-white'
                           : message.type === 'action'
-                          ? 'bg-green-50 border border-green-200 text-green-800'
-                          : 'bg-gray-50 border border-gray-200'
+                          ? 'bg-green-50 border border-green-200 text-green-900 dark:text-green-100'
+                          : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100'
                       }`}
                     >
                       <div className="text-sm whitespace-pre-wrap">{message.content}</div>
-                      <div className="text-xs opacity-70 mt-2 flex items-center gap-2">
-                        <span>{message.timestamp.toLocaleTimeString()}</span>
+                      <div className="text-xs opacity-75 mt-2 flex items-center gap-2">
+                        <span className="text-gray-600 dark:text-gray-400">{message.timestamp.toLocaleTimeString()}</span>
                         {message.actionData?.action && (
-                          <Badge variant="outline" className="text-xs">
+                          <Badge variant="outline" className="text-xs border-purple-300 text-purple-700 dark:border-purple-600 dark:text-purple-300">
                             {message.actionData.action.replace('_', ' ')}
                           </Badge>
                         )}
@@ -263,7 +276,7 @@ export const HarryAgent: React.FC = () => {
                 ))}
                 {(isLoading || isWalletGenerating || isCoinCreating || isTrading || isGeneratingContent) && (
                   <div className="flex justify-start">
-                    <div className="bg-gray-50 border border-gray-200 p-4 rounded-lg">
+                    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 rounded-lg">
                       <div className="flex items-center gap-3">
                         <RefreshCw className="w-4 h-4 animate-spin text-purple-500" />
                         <div className="text-sm">

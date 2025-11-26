@@ -13,6 +13,7 @@ type EnvConfig = {
   
   // API Keys
   dipApiKey?: string;
+  openaiApiKey?: string;
   
   // Database
   supabaseUrl?: string;
@@ -38,6 +39,7 @@ function getEnvConfig(): EnvConfig {
     rpcUrl: process.env.NEXT_PUBLIC_RPC_URL || process.env.RPC_URL || 'https://api.mainnet-beta.solana.com',
     heliusRpcUrl: process.env.NEXT_PUBLIC_RPC_URL,
     dipApiKey: process.env['DIP-API-KEY'] || process.env.DIP_API_KEY,
+    openaiApiKey: process.env.OPENAI_API_KEY,
     supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
     supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     appUrl: typeof window !== 'undefined' 
