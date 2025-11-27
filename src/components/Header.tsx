@@ -7,7 +7,7 @@ import { useMemo, useState, useCallback, useEffect } from 'react';
 import { shortenAddress } from '@/lib/utils';
 import { ThemeToggle } from './ThemeToggle';
 import { Input } from './ui/input';
-import { Search, User, LogOut, Wallet, Copy, Settings, Coins, Rocket } from 'lucide-react';
+import { Search, User, LogOut, Wallet, Copy, Settings, Coins, Rocket, Users } from 'lucide-react';
 import { useRouter } from 'next/router';
 import {
   DropdownMenu,

@@ -16,7 +16,7 @@ interface QuickSwapProps {
 export const QuickSwap: React.FC<QuickSwapProps> = ({ mint }) => {
   const { connection } = useConnection();
   const { publicKey, signTransaction, sendTransaction } = useWallet();
-
+  
   const [mode, setMode] = useState<'buy' | 'sell'>('buy');
   const [amount, setAmount] = useState('');
   const [isLoading, setIsLoading] = useState(false);

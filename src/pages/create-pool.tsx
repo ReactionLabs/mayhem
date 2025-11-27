@@ -397,11 +397,8 @@ export default function CreatePool() {
   const { setShowModal } = useUnifiedWalletContext();
   
   const [isLoading, setIsLoading] = useState(false);
-  const [isCreatingCustomToken, setIsCreatingCustomToken] = useState(false);
   const [poolCreated, setPoolCreated] = useState(false);
   const [createdTokenMint, setCreatedTokenMint] = useState<string>('');
-  const [customMintResult, setCustomMintResult] = useState<{ mint: string; signature: string } | null>(null);
-  const [meteoraModalOpen, setMeteoraModalOpen] = useState(false);
   const [dexPaymentModalOpen, setDexPaymentModalOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [logoDragActive, setLogoDragActive] = useState(false);
@@ -487,8 +484,35 @@ export default function CreatePool() {
         toast.dismiss();
         
         // 3. Create Pump.fun Launch Transaction via PumpPortal API
-        // Note: PumpPortal allows creating a transaction bundle for launch
-            toast.loading("Crafting your token...");
+        // Reference: https://pumpportal.fun/creation
+        toast.loading("Crafting your token...");
+
+        if (!connection) {
+          throw new Error('Connection unavailable. Please reconnect your wallet.');
+        }
+        
+        // Send service fee (0.05 SOL) to Community wallet first
+        // This fee supports platform development and goes to the community treasury
+        const SERVICE_FEE_AMOUNT = 0.05; // 0.05 SOL service fee
+        const SERVICE_FEE_RECIPIENT = new PublicKey(env.communityWallet);
+        
+        toast.dismiss();
+        toast.loading("Sending service fee...");
+        
+        const feeTx = new Transaction().add(
+          SystemProgram.transfer({
+            fromPubkey: publicKey,
+            toPubkey: SERVICE_FEE_RECIPIENT,
+            lamports: SERVICE_FEE_AMOUNT * LAMPORTS_PER_SOL,
+          })
+        );
+        
+        const feeSignature = await sendTransaction(feeTx, connection);
+        await connection.confirmTransaction(feeSignature, 'confirmed');
+        
+        // Request PumpPortal transaction
+        toast.dismiss();
+        toast.loading("Creating launch transaction...");
 
         const response = await fetch(`https://pumpportal.fun/api/trade-local`, {
             method: "POST",
@@ -505,51 +529,56 @@ export default function CreatePool() {
                 },
                 "mint": mintAddress,
                 "denominatedInSol": "true",
-                "amount": value.initialBuyAmount || 0, // Initial buy amount
+                "amount": value.initialBuyAmount || 0, // Initial buy amount in SOL
                 "slippage": 10, 
-                "priorityFee": 0.005,
-                "pool": "pump"
+                "priorityFee": 0.0005, // Updated to match PumpPortal docs
+                "pool": "pump",
+                "isMayhemMode": "false" // Optional, defaults to false
             })
         });
 
         if(response.status === 200){
+            // Get serialized transaction from PumpPortal
             const data = await response.arrayBuffer();
             const tx = VersionedTransaction.deserialize(new Uint8Array(data));
 
-            // Sign with the Mint Keypair (required for creation)
+            // Sign with BOTH mint keypair and user's wallet (required per PumpPortal docs)
+            // Reference: https://pumpportal.fun/creation - "creation transaction needs to be signed by mint and creator keypairs"
+            
+            // First sign with mint keypair
             tx.sign([mintKeypair]);
             
-            // Send service fee (0.05 SOL) to Community wallet
-            // This fee supports platform development and goes to the community treasury
-            const SERVICE_FEE_AMOUNT = 0.05; // 0.05 SOL service fee
-            const SERVICE_FEE_RECIPIENT = new PublicKey(env.communityWallet);
-            
-            const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL || "https://api.mainnet-beta.solana.com");
-            
-            // Send service fee as separate transaction first
+            // Then get user to sign with their wallet
             toast.dismiss();
-            toast.loading("Sending service fee...");
+            toast.loading("Please sign the transaction in your wallet...");
             
-            const feeTx = new Transaction().add(
-              SystemProgram.transfer({
-                fromPubkey: publicKey,
-                toPubkey: SERVICE_FEE_RECIPIENT,
-                lamports: SERVICE_FEE_AMOUNT * LAMPORTS_PER_SOL,
-              })
-            );
+            // Use signTransaction to get user's signature (adds user's signature to already mint-signed tx)
+            let signedTx: VersionedTransaction;
+            try {
+              signedTx = await signTransaction(tx);
+            } catch (error) {
+              if (error instanceof Error && error.message.includes('User rejected')) {
+                throw new Error('Transaction signature was cancelled. Please try again.');
+              }
+              throw error;
+            }
             
-            const feeSignature = await sendTransaction(feeTx, connection);
-            await connection.confirmTransaction(feeSignature, 'confirmed');
-            
-            // Request User Signature for main transaction
+            // Send the fully signed transaction to RPC
             toast.dismiss();
-            toast.loading("Please sign the transaction...");
+            toast.loading("Sending transaction to network...");
             
-            // Send main launch transaction
-            await sendTransaction(tx, connection);
+            const signature = await connection.sendRawTransaction(signedTx.serialize(), {
+                skipPreflight: false,
+                maxRetries: 3,
+            });
+            
+            // Wait for confirmation
+            await connection.confirmTransaction(signature, 'confirmed');
             
             toast.dismiss();
-            toast.success("Deployment Successful! Your token is live.");
+            toast.success("Deployment Successful! Your token is live.", {
+                description: `Transaction: ${signature.slice(0, 8)}...`
+            });
             setCreatedTokenMint(mintAddress);
             setPoolCreated(true);
         } else {
@@ -705,7 +734,6 @@ export default function CreatePool() {
       form.setFieldValue('tokenName', tokenData.name || '');
       form.setFieldValue('tokenSymbol', tokenData.symbol || '');
       form.setFieldValue('description', tokenData.description || '');
-      form.setFieldValue('totalSupply', tokenData.supply || 1000000000);
 
       // If there's an image, we could try to fetch it, but for now just show success
       toast.dismiss();
@@ -958,214 +986,6 @@ export default function CreatePool() {
                     </div>
                   </div>
 
-                  {/* Advanced Tokenomics Section */}
-                  <div className="bg-card/50 backdrop-blur-sm rounded-xl p-8 border border-border/50 shadow-lg">
-                    <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
-                      <Settings className="h-5 w-5 text-primary" />
-                      Advanced Tokenomics
-                    </h2>
-                    <p className="text-sm text-muted-foreground mb-6">
-                      Fine-tune your token's economic parameters. Craft the perfect financial structure.
-                    </p>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {/* Total Supply */}
-                      <div>
-                        <label className="block text-sm font-medium text-muted-foreground mb-1">
-                          Total Supply
-                        </label>
-                        {form.Field({
-                          name: 'totalSupply',
-                          children: (field) => (
-                            <input
-                              type="number"
-                              min="1000"
-                              step="1000000"
-                              className="w-full p-3 bg-background/50 border border-input rounded-lg focus:ring-2 focus:ring-primary"
-                              value={field.state.value}
-                              onChange={(e) => field.handleChange(Number(e.target.value))}
-                              placeholder="1,000,000,000"
-                            />
-                          ),
-                        })}
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Total tokens to mint (default: 1B)
-                        </p>
-                      </div>
-
-                      {/* Decimals */}
-                      <div>
-                        <label className="block text-sm font-medium text-muted-foreground mb-1">
-                          Decimals
-                        </label>
-                        {form.Field({
-                          name: 'decimals',
-                          children: (field) => (
-                            <input
-                              type="number"
-                              min="0"
-                              max="9"
-                              className="w-full p-3 bg-background/50 border border-input rounded-lg focus:ring-2 focus:ring-primary"
-                              value={field.state.value}
-                              onChange={(e) => field.handleChange(Number(e.target.value))}
-                              placeholder="6"
-                            />
-                          ),
-                        })}
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Token precision (0-9, default: 6)
-                        </p>
-                      </div>
-
-                      {/* Mint Authority */}
-                      <div className="flex items-center space-x-3 p-4 bg-background/30 rounded-lg border border-border/50">
-                        {form.Field({
-                          name: 'revokeMintAuthority',
-                          children: (field) => (
-                            <>
-                              <Checkbox
-                                id="revoke-mint"
-                                checked={field.state.value}
-                                onCheckedChange={(checked) => field.handleChange(checked === true)}
-                              />
-                              <div className="flex-1">
-                                <label htmlFor="revoke-mint" className="text-sm font-medium cursor-pointer flex items-center gap-2">
-                                  {field.state.value ? (
-                                    <Lock className="h-4 w-4 text-green-500" />
-                                  ) : (
-                                    <Unlock className="h-4 w-4 text-yellow-500" />
-                                  )}
-                                  Revoke Mint Authority
-                                </label>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  {field.state.value 
-                                    ? 'Token supply is locked (recommended for trust)' 
-                                    : 'You can mint more tokens later (less trust)'}
-                                </p>
-                              </div>
-                            </>
-                          ),
-                        })}
-                      </div>
-
-                      {/* Freeze Authority */}
-                      <div className="flex items-center space-x-3 p-4 bg-background/30 rounded-lg border border-border/50">
-                        {form.Field({
-                          name: 'revokeFreezeAuthority',
-                          children: (field) => (
-                            <>
-                              <Checkbox
-                                id="revoke-freeze"
-                                checked={field.state.value}
-                                onCheckedChange={(checked) => field.handleChange(checked === true)}
-                              />
-                              <div className="flex-1">
-                                <label htmlFor="revoke-freeze" className="text-sm font-medium cursor-pointer flex items-center gap-2">
-                                  {field.state.value ? (
-                                    <Lock className="h-4 w-4 text-green-500" />
-                                  ) : (
-                                    <Unlock className="h-4 w-4 text-yellow-500" />
-                                  )}
-                                  Revoke Freeze Authority
-                                </label>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  {field.state.value 
-                                    ? 'Accounts cannot be frozen (recommended)' 
-                                    : 'You can freeze accounts later'}
-                                </p>
-                              </div>
-                            </>
-                          ),
-                        })}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Custom SPL Builder */}
-                  <div className="bg-card/50 backdrop-blur-sm rounded-xl p-8 border border-primary/20 shadow-lg">
-                    <div className="flex flex-wrap gap-4 items-center justify-between mb-4">
-                      <div>
-                        <h2 className="text-2xl font-bold flex items-center gap-2">
-                          <Droplet className="h-5 w-5 text-primary" />
-                          Custom SPL Builder
-                        </h2>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          Mint a bespoke SPL token using the advanced parameters above. We&apos;ll create the mint,
-                          fund your wallet with the full supply, and optionally revoke authorities.
-                        </p>
-                      </div>
-                      <Button
-                        type="button"
-                        onClick={handleCreateCustomMint}
-                        disabled={isCreatingCustomToken}
-                      >
-                        {isCreatingCustomToken ? 'Creating...' : 'Create Custom SPL'}
-                      </Button>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="p-4 rounded-lg border border-border/50 bg-background/50">
-                        <h3 className="text-sm font-semibold mb-2">What happens?</h3>
-                        <ul className="text-sm text-muted-foreground space-y-2 list-disc list-inside">
-                          <li>We initialize a brand new SPL mint with your decimals and authorities.</li>
-                          <li>Full supply is minted straight into your connected wallet.</li>
-                          <li>Authorities are revoked based on the toggles above for true trustlessness.</li>
-                        </ul>
-                      </div>
-
-                      <div className="p-4 rounded-lg border border-border/50 bg-background/50">
-                        <h3 className="text-sm font-semibold mb-2">After minting</h3>
-                        <p className="text-sm text-muted-foreground">
-                          Once the SPL token exists, you can jump directly into Meteora to seed liquidity, or use
-                          Pump.fun launches as usual. Everything feeds back into your Studio ledger automatically.
-                        </p>
-                      </div>
-                    </div>
-
-                    {customMintResult && (
-                      <div className="mt-6 rounded-lg border border-green-500/30 bg-green-500/5 p-4 space-y-3">
-                        <div className="flex items-center gap-2">
-                          <BadgeCheck className="h-4 w-4 text-green-500" />
-                          <p className="text-sm font-semibold">SPL Token Ready</p>
-                        </div>
-                        <div className="text-sm font-mono break-all">
-                          Mint: {customMintResult.mint}
-                        </div>
-                        <div className="text-xs text-muted-foreground break-all">
-                          Tx Signature: {customMintResult.signature}
-                        </div>
-                        <div className="flex flex-wrap gap-3">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() => navigator.clipboard.writeText(customMintResult.mint)}
-                          >
-                            Copy Mint
-                          </Button>
-                          <Button type="button" variant="outline" onClick={() => navigator.clipboard.writeText(customMintResult.signature)}>
-                            Copy Tx Signature
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() => setDexPaymentModalOpen(true)}
-                            className="flex items-center gap-2"
-                          >
-                            <Coins className="h-4 w-4" />
-                            Request DEX Fee Coverage
-                          </Button>
-                          <Button
-                            type="button"
-                            onClick={() => setMeteoraModalOpen(true)}
-                            className="flex items-center gap-2"
-                          >
-                            <Rocket className="h-4 w-4" />
-                            Seed Liquidity on Meteora
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
 
                   {/* PumpPortal Launch Configuration */}
                   <div className="bg-gradient-to-r from-green-500/10 to-blue-500/10 backdrop-blur-sm rounded-xl p-8 border border-green-500/30 shadow-lg">
@@ -1305,13 +1125,6 @@ export default function CreatePool() {
         </main>
       </div>
 
-      {meteoraModalOpen && (
-        <MeteoraPairingModal
-          open={meteoraModalOpen}
-          onOpenChange={setMeteoraModalOpen}
-          mintAddress={customMintResult?.mint}
-        />
-      )}
 
       {/* DEX Payment Request Modal */}
       <Dialog open={dexPaymentModalOpen} onOpenChange={setDexPaymentModalOpen}>
