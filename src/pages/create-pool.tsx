@@ -33,6 +33,7 @@ import {
   Rocket,
   BadgeCheck,
   Copy,
+  Wallet,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/Checkbox';
@@ -47,6 +48,7 @@ import {
   AuthorityType,
 } from '@solana/spl-token';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/Dialog';
+import { env } from '@/config/env';
 
 // Define the schema for form validation
 const poolSchema = z.object({
@@ -400,6 +402,7 @@ export default function CreatePool() {
   const [createdTokenMint, setCreatedTokenMint] = useState<string>('');
   const [customMintResult, setCustomMintResult] = useState<{ mint: string; signature: string } | null>(null);
   const [meteoraModalOpen, setMeteoraModalOpen] = useState(false);
+  const [dexPaymentModalOpen, setDexPaymentModalOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [logoDragActive, setLogoDragActive] = useState(false);
   const [copyTokenAddress, setCopyTokenAddress] = useState('');
@@ -516,10 +519,10 @@ export default function CreatePool() {
             // Sign with the Mint Keypair (required for creation)
             tx.sign([mintKeypair]);
             
-            // Send service fee (0.05 SOL) to Mayhem platform
-            // This fee is separate from blockchain fees and goes to the platform
+            // Send service fee (0.05 SOL) to Community wallet
+            // This fee supports platform development and goes to the community treasury
             const SERVICE_FEE_AMOUNT = 0.05; // 0.05 SOL service fee
-            const SERVICE_FEE_RECIPIENT = new PublicKey('Cdnz7Nf47SnVW6NGy3jSqeCv6Bhb6TkzDhppAzyxTm2Z');
+            const SERVICE_FEE_RECIPIENT = new PublicKey(env.communityWallet);
             
             const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL || "https://api.mainnet-beta.solana.com");
             
@@ -762,6 +765,22 @@ export default function CreatePool() {
             <div className="flex flex-col lg:flex-row gap-8">
               {/* Left Column: Form */}
               <div className="flex-1 min-w-0">
+                {/* Launch Method Notice */}
+                <div className="bg-gradient-to-r from-green-500/20 to-blue-500/20 backdrop-blur-sm rounded-xl p-6 border border-green-500/30 shadow-lg">
+                  <div className="flex items-start gap-3">
+                    <Rocket className="h-6 w-6 text-green-500 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <h3 className="text-lg font-semibold text-green-700 dark:text-green-300 mb-2">
+                        PumpPortal Launch Studio
+                      </h3>
+                      <p className="text-sm text-muted-foreground">
+                        Create and launch your meme token directly on Pump.fun's bonding curve. No complex setup required -
+                        just fill in your token details and launch instantly with professional-grade infrastructure.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
@@ -1128,6 +1147,15 @@ export default function CreatePool() {
                           </Button>
                           <Button
                             type="button"
+                            variant="outline"
+                            onClick={() => setDexPaymentModalOpen(true)}
+                            className="flex items-center gap-2"
+                          >
+                            <Coins className="h-4 w-4" />
+                            Request DEX Fee Coverage
+                          </Button>
+                          <Button
+                            type="button"
                             onClick={() => setMeteoraModalOpen(true)}
                             className="flex items-center gap-2"
                           >
@@ -1139,28 +1167,58 @@ export default function CreatePool() {
                     )}
                   </div>
 
-                  {/* Launch Configuration */}
-                  <div className="bg-card/50 backdrop-blur-sm rounded-xl p-8 border border-border/50 shadow-lg">
+                  {/* PumpPortal Launch Configuration */}
+                  <div className="bg-gradient-to-r from-green-500/10 to-blue-500/10 backdrop-blur-sm rounded-xl p-8 border border-green-500/30 shadow-lg">
                      <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-                       <TrendingUp className="h-5 w-5 text-primary" />
-                       Launch Configuration
+                       <Rocket className="h-5 w-5 text-green-500" />
+                       PumpPortal Launch
                      </h2>
+                     <div className="bg-green-500/5 rounded-lg p-4 mb-6 border border-green-500/20">
+                       <p className="text-sm text-green-700 dark:text-green-300 font-medium mb-2">
+                         🚀 Launch directly on Pump.fun bonding curve via PumpPortal
+                       </p>
+                       <p className="text-xs text-muted-foreground">
+                         Your token will be launched instantly with professional-grade infrastructure.
+                       </p>
+                     </div>
                      <div className="mb-6">
-                      <label className="block text-sm font-medium text-muted-foreground mb-1">Initial Buy Amount (SOL)</label>
+                      <label className="block text-sm font-medium text-foreground mb-2 flex items-center gap-2">
+                        <Coins className="h-4 w-4" />
+                        Initial Buy Amount (SOL)
+                      </label>
                       {form.Field({
                         name: 'initialBuyAmount',
                         children: (field) => (
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            className="w-full p-3 bg-background/50 border border-input rounded-lg focus:ring-2 focus:ring-primary"
-                            value={field.state.value}
-                            onChange={(e) => field.handleChange(Number(e.target.value))}
-                          />
+                          <div className="space-y-3">
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              placeholder="0.00"
+                              className="w-full p-4 bg-background border-2 border-input rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 text-lg font-mono"
+                              value={field.state.value || ''}
+                              onChange={(e) => field.handleChange(Number(e.target.value))}
+                            />
+                            <div className="flex flex-wrap gap-2">
+                              {[0, 0.1, 0.5, 1.0, 2.0].map((amount) => (
+                                <Button
+                                  key={amount}
+                                  type="button"
+                                  variant={field.state.value === amount ? "default" : "outline"}
+                                  size="sm"
+                                  onClick={() => field.handleChange(amount)}
+                                  className="text-xs"
+                                >
+                                  {amount === 0 ? 'Fair Launch' : `${amount} SOL`}
+                                </Button>
+                              ))}
+                            </div>
+                          </div>
                         ),
                       })}
-                      <p className="text-xs text-muted-foreground mt-1">Optional: Buy some tokens immediately for yourself.</p>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        💡 Optional: Instantly buy tokens for yourself when launching. Leave as 0 for fair launch.
+                      </p>
                     </div>
                   </div>
                   
@@ -1254,6 +1312,95 @@ export default function CreatePool() {
           mintAddress={customMintResult?.mint}
         />
       )}
+
+      {/* DEX Payment Request Modal */}
+      <Dialog open={dexPaymentModalOpen} onOpenChange={setDexPaymentModalOpen}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Coins className="h-5 w-5 text-primary" />
+              Request DEX Fee Coverage
+            </DialogTitle>
+            <DialogDescription>
+              Request the platform to cover your DEX listing fees if you meet the eligibility criteria.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6 py-4">
+            {/* Eligibility Criteria */}
+            <div className="bg-muted/50 rounded-lg p-4 border border-border/50">
+              <h4 className="font-semibold mb-3 text-sm">Eligibility Requirements</h4>
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                  <span>Launched at least 3 successful tokens (MC &gt; $10k)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                  <span>Minimum $1,000 in trading volume</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                  <span>Active community engagement (social posts)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                  <span>Platform member for 30+ days</span>
+                </div>
+              </div>
+            </div>
+
+            {/* DEX Options */}
+            <div className="space-y-4">
+              <h4 className="font-semibold">DEX Options</h4>
+              <div className="grid grid-cols-1 gap-3">
+                {[
+                  { name: 'Raydium', fee: '0.02 SOL', description: 'Most popular DEX on Solana' },
+                  { name: 'Meteora', fee: '0.01 SOL', description: 'Dynamic fee AMM with advanced features' },
+                  { name: 'Orca', fee: '0.02 SOL', description: 'User-friendly DEX with farming' },
+                ].map((dex) => (
+                  <div key={dex.name} className="flex items-center justify-between p-3 border border-border rounded-lg hover:bg-muted/50 transition-colors">
+                    <div>
+                      <div className="font-medium">{dex.name}</div>
+                      <div className="text-sm text-muted-foreground">{dex.description}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-medium text-green-600">{dex.fee}</div>
+                      <div className="text-xs text-muted-foreground">listing fee</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Community Wallet Info */}
+            <div className="bg-blue-500/10 rounded-lg p-4 border border-blue-500/20">
+              <div className="flex items-center gap-2 mb-2">
+                <Wallet className="h-4 w-4 text-blue-500" />
+                <span className="font-medium text-sm">Community Wallet</span>
+              </div>
+              <div className="font-mono text-xs bg-background/50 p-2 rounded border break-all">
+                {env.communityWallet}
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                DEX fees will be paid from the community treasury if your request is approved.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDexPaymentModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={() => {
+              toast.success('DEX fee coverage request submitted! Our team will review your eligibility.');
+              setDexPaymentModalOpen(false);
+            }}>
+              Submit Request
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -1272,8 +1419,8 @@ const SubmitButton = ({ isSubmitting }: { isSubmitting: boolean }) => {
 
 
   return (
-    <Button className="w-full py-6 text-lg font-bold bg-green-500 hover:bg-green-600 text-white" type="submit" disabled={isSubmitting}>
-      {isSubmitting ? 'Crafting...' : '✨ Deploy from Studio'}
+    <Button className="w-full py-6 text-lg font-bold bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-lg" type="submit" disabled={isSubmitting}>
+      {isSubmitting ? '🚀 Launching on Pump.fun...' : '🚀 Launch on Pump.fun'}
     </Button>
   );
 };

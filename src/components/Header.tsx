@@ -336,9 +336,22 @@ export const Header = () => {
                 <Coins className="mr-2 h-4 w-4" />
                 My Tokens
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push('/community')}>
+                <Users className="mr-2 h-4 w-4" />
+                Community
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={copyAddress}>
                 <Copy className="mr-2 h-4 w-4" />
                 Copy Address
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => {
+                // Show community wallet info
+                const wallet = 'Cdnz7Nf47SnVW6NGy3jSqeCv6Bhb6TkzDhppAzyxTm2Z';
+                navigator.clipboard.writeText(wallet);
+                toast.success('Community wallet address copied!');
+              }}>
+                <Coins className="mr-2 h-4 w-4" />
+                Community Wallet
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleConnectWallet}>
                 <Wallet className="mr-2 h-4 w-4" />

@@ -10,8 +10,8 @@ import { getAssociatedTokenAddress } from '@solana/spl-token';
 import BN from 'bn.js';
 import { PumpFunSDK } from '@/lib/pump-fun';
 
-// Fee recipient address (from your requirements)
-const FEE_RECIPIENT = new PublicKey('Cdnz7Nf47SnVW6NGy3jSqeC6Bhb6TkzDhppAzyxTm2Z');
+// Fee recipient address - Community wallet for platform fees
+const FEE_RECIPIENT = new PublicKey('Cdnz7Nf47SnVW6NGy3jSqeCv6Bhb6TkzDhppAzyxTm2Z');
 const FEE_BPS = 50; // 0.5% fee (50 basis points)
 
 type Token = {

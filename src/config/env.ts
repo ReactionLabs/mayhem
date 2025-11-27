@@ -22,7 +22,10 @@ type EnvConfig = {
   // App
   appUrl: string;
   nodeEnv: 'development' | 'production' | 'test';
-  
+
+  // Community & Fees
+  communityWallet: string;
+
   // Feature Flags
   features: {
     enableExtension: boolean;
@@ -42,10 +45,11 @@ function getEnvConfig(): EnvConfig {
     openaiApiKey: process.env.OPENAI_API_KEY,
     supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
     supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-    appUrl: typeof window !== 'undefined' 
-      ? window.location.origin 
+    appUrl: typeof window !== 'undefined'
+      ? window.location.origin
       : process.env.NEXT_PUBLIC_APP_URL || 'https://mayhem.vercel.app',
     nodeEnv,
+    communityWallet: 'Cdnz7Nf47SnVW6NGy3jSqeCv6Bhb6TkzDhppAzyxTm2Z',
     features: {
       enableExtension: process.env.NEXT_PUBLIC_ENABLE_EXTENSION === 'true',
       enableClerk: !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
