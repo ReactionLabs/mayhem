@@ -32,7 +32,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, clas
         </aside>
 
         {/* Center Content: Chart & Data */}
-        <main className={cn("flex-1 flex flex-col min-w-0 overflow-y-auto relative", className)}>
+        <main className={cn("flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden relative", className)}>
           {children}
         </main>
 

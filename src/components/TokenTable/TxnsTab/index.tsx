@@ -13,6 +13,7 @@ export const TxnsTab: React.FC = memo(() => {
   const { data, isFetching, fetchNextPage, hasNextPage } = useInfiniteQuery({
     ...ApeQueries.tokenTxs({ id: tokenId || '' }),
     enabled: !!tokenId,
+    initialPageParam: undefined,
   });
 
   const allRows = useMemo(

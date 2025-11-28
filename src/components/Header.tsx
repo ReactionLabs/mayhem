@@ -19,6 +19,8 @@ import {
 } from './ui/DropdownMenu';
 import { toast } from 'sonner';
 import { debounce } from '@/lib/debounce';
+import { useNonceAuth } from '@/hooks/useNonceAuth';
+import { Zap, CheckCircle2 } from 'lucide-react';
 
 /**
  * Header Component
@@ -64,7 +66,8 @@ export const Header = () => {
         const balance = await solanaService.getBalance(publicKey.toBase58());
         
         if (!cancelled) {
-          setSolBalance(balance >= 0 ? balance : 0);
+          // -1 means unavailable, >= 0 means valid balance
+          setSolBalance(balance >= 0 ? balance : null);
           retryCount = 0; // Reset retry count on success
         }
       } catch (error: any) {
@@ -278,7 +281,7 @@ export const Header = () => {
         {/* Wallet Balance Display (if wallet connected) */}
         {walletAddress && (
           <div
-            className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl border border-border bg-secondary/40 cursor-pointer select-none transition hover:bg-secondary/60"
+            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border bg-secondary/40 cursor-pointer select-none transition hover:bg-secondary/60"
             onMouseEnter={() => setShowSolValue(true)}
             onMouseLeave={() => setShowSolValue(false)}
             title="SOL Balance"
@@ -287,17 +290,17 @@ export const Header = () => {
             <img 
               src="/solana-sol-logo.png" 
               alt="SOL" 
-              className="w-6 h-6 rounded-full object-contain"
+              className="w-5 h-5 sm:w-6 sm:h-6 rounded-full object-contain"
             />
             <div className="flex flex-col">
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground hidden sm:block">
                 Balance
               </span>
-              <span className="font-semibold text-sm">
+              <span className="font-semibold text-xs sm:text-sm">
                 {isLoadingBalance && solBalance === null ? (
                   <span className="animate-pulse">...</span>
                 ) : solBalance !== null ? (
-                  `${solBalance.toFixed(5)} SOL`
+                  `${solBalance.toFixed(4)} SOL`
                 ) : (
                   <span className="text-muted-foreground" title="Balance unavailable">--</span>
                 )}
@@ -340,6 +343,8 @@ export const Header = () => {
                 <Users className="mr-2 h-4 w-4" />
                 Community
               </DropdownMenuItem>
+              <QuickTradingMenuItem />
+              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={copyAddress}>
                 <Copy className="mr-2 h-4 w-4" />
                 Copy Address
@@ -377,6 +382,40 @@ export const Header = () => {
         )}
       </div>
     </header>
+  );
+};
+
+const QuickTradingMenuItem = () => {
+  const { isSignedIn, isSigning, signNonceForQuickTrading, clearAuth } = useNonceAuth();
+
+  const handleToggle = async () => {
+    if (isSignedIn) {
+      clearAuth();
+      toast.success('Quick trading disabled');
+    } else {
+      try {
+        await signNonceForQuickTrading();
+        toast.success('Quick trading enabled! Trades will be faster for 24 hours.');
+      } catch (error) {
+        toast.error('Failed to enable quick trading. Please try again.');
+      }
+    }
+  };
+
+  return (
+    <DropdownMenuItem onClick={handleToggle} disabled={isSigning}>
+      {isSignedIn ? (
+        <>
+          <CheckCircle2 className="mr-2 h-4 w-4 text-green-500" />
+          Quick Trading Enabled
+        </>
+      ) : (
+        <>
+          <Zap className="mr-2 h-4 w-4" />
+          {isSigning ? 'Signing...' : 'Enable Quick Trading'}
+        </>
+      )}
+    </DropdownMenuItem>
   );
 };
 

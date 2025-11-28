@@ -99,16 +99,28 @@ export const ManiaFeedProvider: React.FC<ManiaFeedProviderProps> = ({ children }
     filterType: 'ctAccounts' | 'ctFilters' | 'tgFilters' | 'newsFilters' | 'truthAccounts' | 'instagramAccounts',
     key: string
   ) => {
-    setSettings(prev => ({
-      ...prev,
-      contentFilters: {
-        ...prev.contentFilters,
-        [filterType]: {
-          ...prev.contentFilters[filterType],
-          [key]: !prev.contentFilters[filterType][key]
-        }
+    setSettings(prev => {
+      const contentFilters = { ...prev.contentFilters };
+      
+      if (filterType === 'ctAccounts' || filterType === 'truthAccounts' || filterType === 'instagramAccounts') {
+        // These are objects with string keys and boolean values
+        contentFilters[filterType] = {
+          ...contentFilters[filterType] as { [key: string]: boolean },
+          [key]: !(contentFilters[filterType] as { [key: string]: boolean })[key]
+        } as any;
+      } else if (filterType === 'ctFilters' || filterType === 'tgFilters' || filterType === 'newsFilters') {
+        // These are arrays of objects with id and enabled properties
+        const filters = (contentFilters[filterType] as Array<{ id: string; enabled: boolean }>).map(filter =>
+          filter.id === key ? { ...filter, enabled: !filter.enabled } : filter
+        );
+        contentFilters[filterType] = filters as any;
       }
-    }));
+      
+      return {
+        ...prev,
+        contentFilters
+      };
+    });
   };
 
   useEffect(() => {

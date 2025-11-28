@@ -22,10 +22,10 @@ const inter = Inter({ subsets: ['latin'] });
  * Users connect their Solana wallet (Phantom, Solflare, etc.) to access the platform.
  */
 export default function App({ Component, pageProps }: AppProps) {
-  const wallets: Adapter[] = useMemo(() => {
+  const wallets = useMemo(() => {
     return [new PhantomWalletAdapter(), new SolflareWalletAdapter()].filter(
       (item) => item && item.name && item.icon
-    ) as Adapter[];
+    );
   }, []);
 
   const queryClient = useMemo(() => new QueryClient(), []);

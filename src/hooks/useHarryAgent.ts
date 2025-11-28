@@ -95,12 +95,32 @@ export const useHarryAgent = () => {
       });
 
       if (!coinDetailsResponse.ok) {
-        const errorText = await coinDetailsResponse.text();
+        let errorText = await coinDetailsResponse.text();
         console.error('Coin generation API error:', errorText);
-        throw new Error(`Failed to generate coin details: ${coinDetailsResponse.status} ${errorText}`);
+        
+        // Try to parse as JSON if it's HTML, extract meaningful error
+        let errorMessage = `Failed to generate coin details (${coinDetailsResponse.status})`;
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorMessage = errorJson.error || errorMessage;
+        } catch {
+          // If it's HTML, provide a user-friendly message
+          if (errorText.includes('<!DOCTYPE') || errorText.includes('<html')) {
+            errorMessage = 'OpenAI API key not configured. Please add OPENAI_API_KEY to your .env.local file.';
+          } else {
+            errorMessage = errorText.slice(0, 200); // Limit error text length
+          }
+        }
+        
+        throw new Error(errorMessage);
       }
 
       const coinData = await coinDetailsResponse.json();
+      
+      // Validate response structure
+      if (!coinData.success) {
+        throw new Error(coinData.error || 'Failed to generate coin details');
+      }
 
       // Generate promotional content
       const contentResponse = await fetch('/api/generate-ai', {
@@ -108,18 +128,31 @@ export const useHarryAgent = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 'content',
-          prompt: `Create viral social media content for a meme coin named "${coinData.name}". Include tweets, memes, and promotional copy.`,
+          prompt: `Create viral social media content for a meme coin named "${coinData.result?.name || coinData.name || 'MemeCoin'}". Include tweets, memes, and promotional copy.`,
         }),
       });
 
-      const contentData = await contentResponse.json();
+      if (!contentResponse.ok) {
+        // If content generation fails, continue with coin data only
+        console.warn('Content generation failed, continuing with coin data only');
+      }
 
+      let contentData;
+      try {
+        contentData = await contentResponse.json();
+      } catch {
+        contentData = { result: 'Viral content will be generated soon!' };
+      }
+
+      // Extract coin data from response
+      const coinInfo = coinData.result || coinData;
+      
       return {
-        name: coinData.name || 'Meme Coin',
-        symbol: coinData.symbol || 'MEME',
-        description: coinData.description || 'A hilarious meme coin',
+        name: coinInfo.name || 'Meme Coin',
+        symbol: coinInfo.symbol || 'MEME',
+        description: coinInfo.description || 'A hilarious meme coin',
         contractAddress: 'To be created...', // This would be the actual contract after creation
-        content: contentData.result || 'Viral content generated!',
+        content: contentData?.result || contentData?.content || 'Viral content generated!',
       };
     } catch (error) {
       console.error('Coin creation error:', error);

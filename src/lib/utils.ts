@@ -71,7 +71,13 @@ export function serializeParams(params: Record<string, unknown>): Record<string,
   );
 }
 
-export function shortenAddress(address: string) {
+export function shortenAddress(address: string | null | undefined): string {
+  if (!address || typeof address !== 'string') {
+    return 'N/A';
+  }
+  if (address.length <= 8) {
+    return address;
+  }
   return `${address.slice(0, 4)}...${address.slice(-4)}`;
 }
 

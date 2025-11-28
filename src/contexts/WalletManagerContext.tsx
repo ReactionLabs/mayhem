@@ -66,25 +66,46 @@ export function WalletManagerProvider({ children }: { children: React.ReactNode 
       return;
     }
     const address = publicKey.toBase58();
-    setConnectedWallet({
+    const newConnectedWallet: ManagedWallet = {
       id: `connected-${address}`,
       label: 'Connected Wallet',
       address,
       type: 'connected',
       balance: null,
       isActive: true,
-    });
+    };
+    setConnectedWallet(newConnectedWallet);
     setActiveWallets(prev => {
       if (prev.includes(`connected-${address}`)) return prev;
       return [ `connected-${address}`, ...prev ];
     });
+    
+    // Immediately fetch balance for newly connected wallet
+    const fetchConnectedBalance = async () => {
+      try {
+        const { solanaService } = await import('@/services/blockchain');
+        if (solanaService.isValidAddress(address)) {
+          const balance = await solanaService.getBalance(address);
+          if (typeof balance === 'number' && balance >= 0) {
+            setConnectedWallet(prev => prev ? { ...prev, balance } : prev);
+          }
+        }
+      } catch (error) {
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Failed to fetch connected wallet balance:', error);
+        }
+      }
+    };
+    
+    // Fetch balance after a short delay to ensure state is set
+    setTimeout(fetchConnectedBalance, 100);
   }, [publicKey]);
 
   const mapApiWallet = useCallback(
     (wallet: any): ManagedWallet => ({
       id: wallet.id,
       label: wallet.label,
-      address: wallet.address,
+      address: wallet.address || '', // Ensure address is always a string
       type: wallet.type,
       apiKey: wallet.api_key || undefined,
       balance: wallet.balance ?? null,
@@ -98,31 +119,66 @@ export function WalletManagerProvider({ children }: { children: React.ReactNode 
 
     if (allWallets.length === 0) return;
 
+    // Filter out wallets with invalid addresses
+    const validWallets = allWallets.filter(w => w.address && w.address.trim().length > 0);
+    
+    if (validWallets.length === 0) {
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('No wallets with valid addresses to fetch balances for');
+      }
+      return;
+    }
+
     // Use the new service layer for balance fetching
     const { solanaService } = await import('@/services/blockchain');
     
-    const balancePromises = allWallets.map(async (wallet) => {
+    const balancePromises = validWallets.map(async (wallet) => {
       try {
+        // Validate address before fetching
+        if (!solanaService.isValidAddress(wallet.address)) {
+          if (process.env.NODE_ENV === 'development') {
+            console.warn(`Invalid address for wallet ${wallet.id}: ${wallet.address}`);
+          }
+          return { id: wallet.id, balance: null };
+        }
+
         const balance = await solanaService.getBalance(wallet.address);
-        return {
-          id: wallet.id,
-          balance,
-        };
+        
+        // Balance of -1 means "unavailable", null means "not fetched yet"
+        // Only update if balance is a valid number >= 0
+        if (typeof balance === 'number' && balance >= 0) {
+          return {
+            id: wallet.id,
+            balance,
+          };
+        } else if (balance === -1) {
+          // -1 means unavailable (RPC error, etc.)
+          return { id: wallet.id, balance: null };
+        } else {
+          if (process.env.NODE_ENV === 'development') {
+            console.warn(`Invalid balance returned for wallet ${wallet.id}: ${balance}`);
+          }
+          return { id: wallet.id, balance: null };
+        }
       } catch (error) {
         if (process.env.NODE_ENV === 'development') {
-          console.error(`Failed to fetch balance for ${wallet.address}:`, error);
+          console.error(`Failed to fetch balance for wallet ${wallet.id} (${wallet.address}):`, error);
         }
         return { id: wallet.id, balance: null };
       }
     });
 
     const results = await Promise.all(balancePromises);
+    
+    // Update persisted wallets
     setPersistedWallets(prev =>
       prev.map(w => {
         const result = results.find(r => r.id === w.id);
         return result ? { ...w, balance: result.balance } : w;
       })
     );
+    
+    // Update connected wallet
     if (connectedWallet) {
       const result = results.find(r => r.id === connectedWallet.id);
       if (result) {
@@ -139,7 +195,15 @@ export function WalletManagerProvider({ children }: { children: React.ReactNode 
 
     if (savedWallets) {
       try {
-        setPersistedWallets(JSON.parse(savedWallets));
+        const parsed = JSON.parse(savedWallets) as ManagedWallet[];
+        // Filter out wallets with invalid addresses and ensure address is always a string
+        const validWallets = parsed
+          .filter(w => w && w.id && w.label)
+          .map(w => ({
+            ...w,
+            address: w.address || '', // Ensure address is always a string
+          }));
+        setPersistedWallets(validWallets);
       } catch (e) {
         if (process.env.NODE_ENV === 'development') {
           console.error('Failed to load wallets:', e);

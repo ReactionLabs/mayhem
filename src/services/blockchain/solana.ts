@@ -63,12 +63,14 @@ class SolanaService {
         return this.getBalance(address, true);
       }
       
-      // If fallback also fails with 403, return 0 instead of throwing
+      // If fallback also fails with 403, return 0 but log it
+      // This allows UI to show "unavailable" vs "0 balance"
       if (is403 && useFallback) {
         if (process.env.NODE_ENV === 'development') {
           console.warn('Fallback RPC also returned 403, balance unavailable');
         }
-        return 0;
+        // Return -1 to indicate "unavailable" vs 0 which means "no balance"
+        return -1;
       }
       
       // For other errors, try fallback if not already using it
@@ -76,8 +78,11 @@ class SolanaService {
         return this.getBalance(address, true);
       }
       
-      // If fallback also fails, return 0 to prevent UI errors
-      return 0;
+      // If fallback also fails, return -1 to indicate unavailable
+      if (process.env.NODE_ENV === 'development') {
+        console.error(`Failed to fetch balance for ${address}:`, errorMessage);
+      }
+      return -1;
     }
   }
 

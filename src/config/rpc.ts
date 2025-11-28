@@ -3,12 +3,12 @@
  * Centralized RPC connection management
  */
 
-import { Connection, CommitmentLevel } from '@solana/web3.js';
+import { Connection, Commitment } from '@solana/web3.js';
 import { env } from './env';
 
 export type RpcConfig = {
   url: string;
-  commitment: CommitmentLevel;
+  commitment: Commitment;
   timeout: number;
 };
 

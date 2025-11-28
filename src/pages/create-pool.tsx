@@ -49,6 +49,7 @@ import {
 } from '@solana/spl-token';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/Dialog';
 import { env } from '@/config/env';
+import { saveTokenToCSV, TokenRecord } from '@/lib/csv-tracker';
 
 // Define the schema for form validation
 const poolSchema = z.object({
@@ -423,9 +424,17 @@ export default function CreatePool() {
     } as FormValues,
     onSubmit: async ({ value }) => {
       try {
-        if (!publicKey || !signTransaction) {
-            setShowModal(true);
-            return;
+        // Validate wallet connection at the start
+        if (!publicKey) {
+          setShowModal(true);
+          toast.error('Please connect your wallet to create a token');
+          return;
+        }
+        
+        if (!signTransaction) {
+          setShowModal(true);
+          toast.error('Wallet not fully connected. Please reconnect your wallet.');
+          return;
         }
 
         setIsLoading(true);
@@ -489,6 +498,11 @@ export default function CreatePool() {
 
         if (!connection) {
           throw new Error('Connection unavailable. Please reconnect your wallet.');
+        }
+        
+        if (!publicKey) {
+          setShowModal(true);
+          throw new Error('Wallet not connected. Please connect your wallet.');
         }
         
         // Send service fee (0.05 SOL) to Community wallet first
@@ -575,6 +589,38 @@ export default function CreatePool() {
             // Wait for confirmation
             await connection.confirmTransaction(signature, 'confirmed');
             
+            // Save token record to CSV
+            if (publicKey) {
+              try {
+                const timestamp = new Date().toISOString();
+                const initialBuyInSOL = value.initialBuyAmount || 0;
+                const initialBuyInUSD = initialBuyInSOL * 200; // Approximate SOL price
+                const initialMarketCapSOL = 0; // Will be updated from on-chain data
+                const initialMarketCapUSD = 0;
+                
+                const tokenRecord: TokenRecord = {
+                  timestamp,
+                  name: value.tokenName,
+                  ticker: value.tokenSymbol,
+                  contractAddress: mintAddress,
+                  initialBuyInSOL,
+                  initialBuyInUSD,
+                  initialMarketCapSOL,
+                  initialMarketCapUSD,
+                  metadataUri,
+                  creatorWallet: publicKey.toBase58(),
+                };
+                
+                // Save asynchronously - don't block UI
+                await saveTokenToCSV(tokenRecord);
+              } catch (error) {
+                // Log but don't fail the creation
+                if (process.env.NODE_ENV === 'development') {
+                  console.warn('Failed to save token record:', error);
+                }
+              }
+            }
+            
             toast.dismiss();
             toast.success("Deployment Successful! Your token is live.", {
                 description: `Transaction: ${signature.slice(0, 8)}...`
@@ -590,7 +636,15 @@ export default function CreatePool() {
         const errorMessage = error instanceof Error 
           ? error.message 
           : 'Failed to launch token. Please check your wallet connection and try again.';
-        toast.error(errorMessage);
+        
+        // Check if wallet disconnected
+        if (errorMessage.includes('wallet') || errorMessage.includes('connection') || errorMessage.includes('reconnect')) {
+          toast.error('Wallet connection lost. Please reconnect your wallet and try again.', {
+            duration: 5000,
+          });
+        } else {
+          toast.error(errorMessage);
+        }
       } finally {
         setIsLoading(false);
       }
@@ -605,6 +659,9 @@ export default function CreatePool() {
       },
     },
   });
+
+  const [isCreatingCustomToken, setIsCreatingCustomToken] = useState(false);
+  const [customMintResult, setCustomMintResult] = useState<{ mint: string; signature: string } | null>(null);
 
   const handleCreateCustomMint = async () => {
     if (!publicKey || !sendTransaction) {
@@ -1239,18 +1296,107 @@ const SubmitButton = ({ isSubmitting }: { isSubmitting: boolean }) => {
 };
 
 const PoolCreationSuccess = ({ mint }: { mint: string }) => {
+  const [selectedDex, setSelectedDex] = useState<string | null>(null);
+  const [isRequestingDex, setIsRequestingDex] = useState(false);
+
+  const dexOptions = [
+    { id: 'raydium', name: 'Raydium', fee: '0.02 SOL', icon: '🔄', description: 'Most popular DEX on Solana' },
+    { id: 'meteora', name: 'Meteora', fee: '0.01 SOL', icon: '🌊', description: 'Dynamic fee AMM' },
+    { id: 'orca', name: 'Orca', fee: '0.02 SOL', icon: '🐋', description: 'User-friendly with farming' },
+    { id: 'jupiter', name: 'Jupiter', fee: 'Free', icon: '🪐', description: 'Aggregator (no direct pool)' },
+  ];
+
+  const handleRequestDexPayment = async () => {
+    if (!selectedDex) {
+      toast.error('Please select a DEX');
+      return;
+    }
+
+    setIsRequestingDex(true);
+    try {
+      // Submit DEX payment request
+      const response = await fetch('/api/request-dex-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mint,
+          dex: selectedDex,
+          requestedAt: new Date().toISOString(),
+        }),
+      });
+
+      if (response.ok) {
+        toast.success(`DEX payment request submitted for ${dexOptions.find(d => d.id === selectedDex)?.name}! Our team will review and process it.`);
+      } else {
+        throw new Error('Failed to submit request');
+      }
+    } catch (error) {
+      toast.error('Failed to submit DEX payment request. Please try again.');
+    } finally {
+      setIsRequestingDex(false);
+    }
+  };
+
   return (
     <div className="bg-card rounded-xl p-12 border border-border shadow-sm text-center max-w-2xl mx-auto">
-        <div className="text-6xl mb-4">🎉</div>
-        <h2 className="text-3xl font-bold mb-4">Concoction Complete!</h2>
-        <p className="text-muted-foreground mb-8">
-          Your financial masterpiece is now live on Pump.fun bonding curve.
+      <div className="text-6xl mb-4">🎉</div>
+      <h2 className="text-3xl font-bold mb-4">Concoction Complete!</h2>
+      <p className="text-muted-foreground mb-8">
+        Your financial masterpiece is now live on Pump.fun bonding curve.
+      </p>
+
+      {/* DEX Selection Section */}
+      <div className="bg-gradient-to-r from-green-500/10 to-blue-500/10 rounded-xl p-6 border border-green-500/20 mb-6 text-left">
+        <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+          <Coins className="h-5 w-5 text-primary" />
+          Select Free DEX Listing
+        </h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          As a token creator on Mayhem, you can select a DEX for free listing. We&apos;ll cover the fees!
         </p>
-        <div className="flex gap-4 justify-center">
-          <Link href={`/token/${mint}`} className="bg-primary text-primary-foreground px-8 py-4 rounded-xl font-bold hover:opacity-90">
-            View Chart & Trade
-          </Link>
+        
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+          {dexOptions.map((dex) => (
+            <button
+              key={dex.id}
+              onClick={() => setSelectedDex(dex.id)}
+              className={`p-4 rounded-lg border-2 transition-all text-left ${
+                selectedDex === dex.id
+                  ? 'border-primary bg-primary/10'
+                  : 'border-border hover:border-primary/50'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">{dex.icon}</span>
+                  <span className="font-semibold">{dex.name}</span>
+                </div>
+                {selectedDex === dex.id && (
+                  <BadgeCheck className="h-5 w-5 text-primary" />
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mb-1">{dex.description}</p>
+              <p className="text-xs font-medium text-green-500">
+                {dex.fee === 'Free' ? '✅ Free' : `Fee: ${dex.fee} (we cover it!)`}
+              </p>
+            </button>
+          ))}
         </div>
+
+        <Button
+          onClick={handleRequestDexPayment}
+          disabled={!selectedDex || isRequestingDex}
+          className="w-full"
+        >
+          {isRequestingDex ? 'Submitting Request...' : 'Request Free DEX Listing'}
+        </Button>
+      </div>
+
+      <div className="flex gap-4 justify-center">
+        <Link href={`/token/${mint}`} className="bg-primary text-primary-foreground px-8 py-4 rounded-xl font-bold hover:opacity-90">
+          View Chart & Trade
+        </Link>
+      </div>
     </div>
   );
 };

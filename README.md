@@ -44,11 +44,25 @@ RPC_URL=https://mainnet.helius-rpc.com/?api-key=your_api_key_here
 # Optional - Solana network (mainnet-beta or devnet, defaults to mainnet-beta)
 NEXT_PUBLIC_SOLANA_NETWORK=mainnet-beta
 
-# Optional - Pump.fun API key (users can also provide their own)
-DIP_API_KEY=your_api_key_here
+# OpenAI Configuration (choose one)
+# Option 1: Direct OpenAI API Key
+OPENAI_API_KEY=sk-your-openai-api-key-here
 
-# Optional - Gemini AI for token analysis
-GEMINI_API_KEY=your_gemini_key_here
+# Option 2: Vercel AI Gateway (Recommended for production)
+VERCEL_AI_GATEWAY_URL=https://gateway.ai.cloudflare.com/v1/YOUR_ACCOUNT_ID/openai
+VERCEL_AI_GATEWAY_API_KEY=your-vercel-ai-gateway-api-key
+
+# PumpPortal API Key
+DIP-API-KEY=your-pumpportal-api-key
+# OR
+DIP_API_KEY=your-pumpportal-api-key
+
+# Optional - Supabase (for database)
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+
+# Optional - Clerk Authentication
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=your-clerk-key
 ```
 
 4. Run the development server:
@@ -71,18 +85,32 @@ This app is configured for Vercel deployment. Simply connect your GitHub reposit
 
 ### Environment Variables for Vercel
 
-Set these in your Vercel project settings:
+Set these in your Vercel project settings (Settings → Environment Variables):
 
-- `NEXT_PUBLIC_RPC_URL` - Your Solana RPC endpoint (required)
+#### Required:
+- `NEXT_PUBLIC_RPC_URL` - Your Solana RPC endpoint
   - Example: `https://mainnet.helius-rpc.com/?api-key=your_api_key_here`
   - Or use public RPC: `https://api.mainnet-beta.solana.com`
-- `RPC_URL` - Server-side RPC endpoint (optional, defaults to NEXT_PUBLIC_RPC_URL)
-  - Use same value as NEXT_PUBLIC_RPC_URL for consistency
-- `NEXT_PUBLIC_SOLANA_NETWORK` - Network: `mainnet-beta` or `devnet` (optional, defaults to mainnet-beta)
-- `DIP_API_KEY` - (Optional) Pump.fun API key
-- `GEMINI_API_KEY` - (Optional) Gemini AI key
 
-**Important**: Never commit API keys to the repository. Always use environment variables.
+#### OpenAI Configuration (choose one):
+- `OPENAI_API_KEY` - Direct OpenAI API key
+- **OR** (Recommended for production):
+  - `VERCEL_AI_GATEWAY_URL` - Vercel AI Gateway URL
+  - `VERCEL_AI_GATEWAY_API_KEY` - Vercel AI Gateway API key
+
+#### Optional:
+- `RPC_URL` - Server-side RPC endpoint (defaults to NEXT_PUBLIC_RPC_URL)
+- `NEXT_PUBLIC_SOLANA_NETWORK` - Network: `mainnet-beta` or `devnet` (defaults to mainnet-beta)
+- `DIP-API-KEY` or `DIP_API_KEY` - PumpPortal API key
+- `NEXT_PUBLIC_SUPABASE_URL` - Supabase project URL
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Supabase anon key
+- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` - Clerk publishable key
+
+**Important**: 
+- Never commit API keys to the repository
+- Always use environment variables in Vercel dashboard
+- Vercel AI Gateway is automatically configured if you enable it in your Vercel project
+- See `docs/ENV_SETUP.md` for detailed environment variable documentation
 
 ## Project Structure
 

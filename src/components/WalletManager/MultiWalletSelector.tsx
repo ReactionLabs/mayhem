@@ -185,7 +185,7 @@ const WalletCard: React.FC<WalletCardProps> = ({
             
             <div className="flex items-center gap-2 mt-1">
               <span className="text-xs font-mono text-muted-foreground">
-                {shortenAddress(wallet.address)}
+                {wallet.address ? shortenAddress(wallet.address) : 'No address'}
               </span>
               <Badge variant="outline" className="text-[10px]">
                 {wallet.type}
@@ -195,7 +195,11 @@ const WalletCard: React.FC<WalletCardProps> = ({
 
           <div className="text-right shrink-0">
             <div className="text-sm font-semibold">
-              {wallet.balance !== null && wallet.balance >= 0 ? `${wallet.balance.toFixed(5)} SOL` : '0.00000 SOL'}
+              {wallet.balance !== null && wallet.balance >= 0 
+                ? `${wallet.balance.toFixed(5)} SOL` 
+                : wallet.balance === null 
+                  ? <span className="text-muted-foreground animate-pulse">Loading...</span>
+                  : '0.00000 SOL'}
             </div>
             {isActive && (
               <div className="flex items-center gap-1 text-[10px] text-green-500 mt-1">

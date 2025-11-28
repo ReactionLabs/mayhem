@@ -476,8 +476,8 @@ export const TokenChart: React.FC<ChartProps> = memo(({ renderingId, style, opt 
       <RefreshMarks isLoaded={isLoaded} widgetRef={widgetRef} />
 
       <div
-        className={cn('relative h-full w-full flex-1 overflow-hidden transition-all')}
-        style={{ minHeight: 200, ...style }}
+        className={cn('relative w-full flex-1 overflow-hidden transition-all')}
+        style={{ minHeight: 200, width: '100%', height: '100%', flex: '1 1 auto', ...style }}
       >
         {/* Shades to prevent flickering */}
         <div
@@ -493,7 +493,7 @@ export const TokenChart: React.FC<ChartProps> = memo(({ renderingId, style, opt 
         <div
           id={htmlId}
           className={cn('h-full w-full', isDataReady ? `opacity-100` : `opacity-0`)}
-          style={{ minHeight: 200, ...style }}
+          style={{ minHeight: 200, width: '100%', height: '100%', ...style }}
         />
       </div>
     </>

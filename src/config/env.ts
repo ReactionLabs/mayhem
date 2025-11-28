@@ -14,6 +14,8 @@ type EnvConfig = {
   // API Keys
   dipApiKey?: string;
   openaiApiKey?: string;
+  aiGatewayApiKey?: string;
+  aiGatewayUrl?: string;
   
   // Database
   supabaseUrl?: string;
@@ -43,6 +45,9 @@ function getEnvConfig(): EnvConfig {
     heliusRpcUrl: process.env.NEXT_PUBLIC_RPC_URL,
     dipApiKey: process.env['DIP-API-KEY'] || process.env.DIP_API_KEY,
     openaiApiKey: process.env.OPENAI_API_KEY,
+    // Support both Vercel AI Gateway naming and custom naming
+    aiGatewayApiKey: process.env.VERCEL_AI_GATEWAY_API_KEY || process.env.AI_GATEWAY_API_KEY || process.env.AIGATEWAYAPI,
+    aiGatewayUrl: process.env.VERCEL_AI_GATEWAY_URL || process.env.AI_GATEWAY_URL || process.env.AIGATEWAYURL,
     supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
     supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     appUrl: typeof window !== 'undefined'

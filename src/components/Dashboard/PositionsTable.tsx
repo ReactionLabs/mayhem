@@ -8,7 +8,7 @@ export const PositionsTable = () => {
   ];
 
   return (
-    <div className="flex flex-col h-64 border-t border-border bg-card">
+    <div className="flex flex-col border-t border-border bg-card" style={{ height: '200px', minHeight: '200px', maxHeight: '200px' }}>
       <div className="flex items-center justify-between p-2 px-4 border-b border-border bg-secondary/10">
         <h3 className="text-xs font-bold uppercase tracking-wider">Open Positions</h3>
         <Badge variant="outline" className="text-[10px] h-5">Total Value: $306.50</Badge>

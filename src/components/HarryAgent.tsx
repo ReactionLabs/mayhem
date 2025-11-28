@@ -86,41 +86,138 @@ export const HarryAgent: React.FC = () => {
   };
 
   const handleSubmit = async () => {
-    if (!currentInput.trim()) return;
+    if (!currentInput.trim() || isLoading) return;
 
     const userMessage = currentInput.trim();
     addMessage({ role: 'user', content: userMessage, type: 'text' });
     setCurrentInput('');
     setIsLoading(true);
 
-    try {
-      // Parse user intent and execute appropriate action
-      const response = await processHarryCommand(userMessage);
-      addMessage({
-        role: 'harry',
-        content: response.message,
-        type: response.type || 'text',
-        actionData: response.data
-      });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    // Check if this is a command that needs special handling
+    const cmd = userMessage.toLowerCase();
+    const isCommand = 
+      cmd.includes('wallet') || 
+      cmd.includes('create') || 
+      cmd.includes('trade') || 
+      cmd.includes('buy') || 
+      cmd.includes('sell') ||
+      cmd.includes('image') ||
+      cmd.includes('generate');
 
-      // Provide helpful guidance for API key setup
-      if (errorMessage.includes('OpenAI API key not configured')) {
+    if (isCommand) {
+      // Use command processing for specific actions
+      try {
+        const response = await processHarryCommand(userMessage);
         addMessage({
           role: 'harry',
-          content: `🤖 **AI Features Not Configured**\n\nTo use my advanced AI capabilities, you need to set up an OpenAI API key:\n\n1. Go to https://platform.openai.com/api-keys\n2. Create a new API key\n3. Add it to your \`.env.local\` file:\n\n\`\`\`\nOPENAI_API_KEY=your_api_key_here\n\`\`\`\n\nOnce configured, I'll be able to generate coins, images, and content! 🚀`,
-          type: 'text'
+          content: response.message,
+          type: response.type || 'text',
+          actionData: response.data
         });
-      } else {
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         addMessage({
           role: 'harry',
           content: `Sorry, I encountered an error: ${errorMessage}`,
           type: 'text'
         });
+      } finally {
+        setIsLoading(false);
       }
-    } finally {
-      setIsLoading(false);
+    } else {
+      // Use streaming for general chat
+      try {
+        // Create assistant message placeholder
+        const assistantMessageId = Date.now().toString();
+        let assistantContent = '';
+        
+        addMessage({
+          id: assistantMessageId,
+          role: 'harry',
+          content: '',
+          type: 'text',
+          timestamp: new Date()
+        });
+
+        // Stream the response
+        const response = await fetch('/api/agent-chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: userMessage,
+            agentType: 'harry',
+            model: 'gpt-4',
+            temperature: 0.7,
+            max_tokens: 1000,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const reader = response.body?.getReader();
+        if (!reader) {
+          throw new Error('No response body');
+        }
+
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                
+                if (data.error) {
+                  throw new Error(data.error);
+                }
+
+                if (data.content) {
+                  assistantContent += data.content;
+                  // Update the message in real-time
+                  setMessages(prev => prev.map(msg => 
+                    msg.id === assistantMessageId 
+                      ? { ...msg, content: assistantContent }
+                      : msg
+                  ));
+                }
+
+                if (data.done) break;
+              } catch (e) {
+                // Skip invalid JSON
+              }
+            }
+          }
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        
+        if (errorMessage.includes('OpenAI API key not configured')) {
+          addMessage({
+            role: 'harry',
+            content: `🤖 **AI Features Not Configured**\n\nTo use my advanced AI capabilities, you need to set up an OpenAI API key:\n\n1. Go to https://platform.openai.com/api-keys\n2. Create a new API key\n3. Add it to your \`.env.local\` file:\n\n\`\`\`\nOPENAI_API_KEY=your_api_key_here\n\`\`\`\n\nOnce configured, I'll be able to generate coins, images, and content! 🚀`,
+            type: 'text'
+          });
+        } else {
+          addMessage({
+            role: 'harry',
+            content: `Sorry, I encountered an error: ${errorMessage}`,
+            type: 'text'
+          });
+        }
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -149,13 +246,38 @@ export const HarryAgent: React.FC = () => {
       };
     }
 
-    // Trading
-    if (cmd.includes('trade') || cmd.includes('buy') || cmd.includes('sell')) {
+    // Trading - Enhanced with more actions
+    if (cmd.includes('trade') || cmd.includes('buy') || cmd.includes('sell') || cmd.includes('execute')) {
       const tradeResult = await executeTrade(command);
       return {
-        message: `📈 **Trade Executed!**\n\n**Action:** ${tradeResult.action}\n**Token:** ${tradeResult.token}\n**Amount:** ${tradeResult.amount} SOL\n**Status:** ✅ Success\n**Tx Hash:** \`${tradeResult.txHash}\``,
+        message: `📈 **Trade Executed!**\n\n**Action:** ${tradeResult.action}\n**Token:** ${tradeResult.token}\n**Amount:** ${tradeResult.amount} SOL\n**Status:** ✅ Success\n**Tx Hash:** \`${tradeResult.txHash}\`\n\n**Next Steps:**\n- Monitor position in dashboard\n- Set stop-loss if needed\n- Track performance in portfolio`,
         type: 'action',
         data: { action: 'trade_executed', trade: tradeResult }
+      };
+    }
+
+    // Advanced trading actions
+    if (cmd.includes('stop loss') || cmd.includes('stop-loss') || cmd.includes('set stop')) {
+      return {
+        message: `🛡️ **Stop Loss Configuration:**\n\nI can help you set up stop-loss orders to protect your positions.\n\n**Options:**\n- **Percentage-based:** "Set stop loss at -10%"\n- **Price-based:** "Set stop at $0.0005"\n- **Trailing stop:** "Set trailing stop at 5%"\n\n**Current Token:** Available in dashboard\n\nSay: "Set stop loss at -15%" to configure.`,
+        type: 'action',
+        data: { action: 'stop_loss_config' }
+      };
+    }
+
+    if (cmd.includes('take profit') || cmd.includes('profit target') || cmd.includes('target')) {
+      return {
+        message: `🎯 **Take Profit Configuration:**\n\nSet profit targets to automatically take gains.\n\n**Options:**\n- **Percentage:** "Take profit at +50%"\n- **Price:** "Sell at $0.001"\n- **Partial:** "Sell 25% at 2x, 25% at 3x"\n\n**Current Token:** Available in dashboard\n\nSay: "Take profit at +100%" to configure.`,
+        type: 'action',
+        data: { action: 'take_profit_config' }
+      };
+    }
+
+    if (cmd.includes('position') || cmd.includes('portfolio') || cmd.includes('holdings')) {
+      return {
+        message: `💼 **Position Management:**\n\nI can help you manage your positions:\n\n**Available Actions:**\n- View all positions\n- Check P&L\n- Rebalance portfolio\n- Close positions\n- Set alerts\n\n**Quick Commands:**\n- "Show my positions"\n- "What's my P&L?"\n- "Close position for [token]"\n\nVisit /portfolio for detailed view.`,
+        type: 'action',
+        data: { action: 'position_management' }
       };
     }
 
@@ -196,7 +318,9 @@ export const HarryAgent: React.FC = () => {
   const getQuickActions = () => [
     { label: 'Generate Wallet', icon: <Wallet className="w-4 h-4" />, command: 'generate a new wallet' },
     { label: 'Create Meme Coin', icon: <Coins className="w-4 h-4" />, command: 'create a funny meme coin about cats' },
-    { label: 'Execute Trade', icon: <TrendingUp className="w-4 h-4" />, command: 'buy 0.1 SOL worth of the trending token' },
+    { label: 'Buy 0.1 SOL', icon: <TrendingUp className="w-4 h-4" />, command: 'buy 0.1 SOL worth of the trending token' },
+    { label: 'Set Stop Loss', icon: <Target className="w-4 h-4" />, command: 'set stop loss at -10%' },
+    { label: 'Take Profit', icon: <BarChart3 className="w-4 h-4" />, command: 'take profit at +50%' },
     { label: 'Generate Image', icon: <Image className="w-4 h-4" />, command: 'generate an image of a rocket ship made of memes' },
     { label: 'Social Content', icon: <MessageSquare className="w-4 h-4" />, command: 'create viral social media content about crypto memes' }
   ];

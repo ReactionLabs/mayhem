@@ -161,17 +161,32 @@ export default function MyTokensPage() {
   useEffect(() => {
     if (!publicKey) {
       setLoading(false);
+      setTokens([]);
       return;
     }
 
     const fetchTokens = async () => {
       try {
+        setLoading(true);
         const response = await fetch(
           `/api/my-tokens?wallet=${publicKey.toBase58()}`
         );
-        if (!response.ok) throw new Error('Failed to fetch tokens');
+        
+        if (!response.ok) {
+          if (response.status === 400) {
+            throw new Error('Invalid wallet address');
+          }
+          throw new Error(`Failed to fetch tokens: ${response.status}`);
+        }
 
         const data = await response.json();
+        
+        if (!data.tokens || data.tokens.length === 0) {
+          setTokens([]);
+          setLoading(false);
+          return;
+        }
+
         const tokensWithPrice: TokenRecord[] = await Promise.all(
           (data.tokens || []).map(async (token: TokenRecord) => {
             try {
@@ -187,7 +202,7 @@ export default function MyTokensPage() {
                 };
               }
             } catch (error) {
-              // Silently fail
+              // Silently fail price fetch
             }
             return token;
           })
@@ -198,7 +213,9 @@ export default function MyTokensPage() {
         if (process.env.NODE_ENV === 'development') {
           console.error('Error fetching tokens:', error);
         }
-        toast.error('Failed to load your tokens');
+        const errorMessage = error instanceof Error ? error.message : 'Failed to load your tokens';
+        toast.error(errorMessage);
+        setTokens([]);
       } finally {
         setLoading(false);
       }
@@ -229,6 +246,14 @@ export default function MyTokensPage() {
               <p className="text-muted-foreground mb-4">
                 Connect your wallet to view your created tokens
               </p>
+              <Button onClick={() => {
+                // Trigger wallet connection modal
+                if (typeof window !== 'undefined') {
+                  window.dispatchEvent(new CustomEvent('wallet:connect'));
+                }
+              }}>
+                Connect Wallet
+              </Button>
             </CardContent>
           </Card>
         ) : loading ? (
