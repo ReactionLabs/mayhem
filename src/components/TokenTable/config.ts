@@ -4,6 +4,7 @@ import { atomWithStorage } from 'jotai/utils';
 export const BottomPanelTab = {
   TXNS: 'token_txns',
   HOLDERS: 'token_holders',
+  BUBBLEMAPS: 'bubble_maps',
   HISTORY: 'history',
   ORDERS: 'orders',
 } as const;

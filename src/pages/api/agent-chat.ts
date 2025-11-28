@@ -1,39 +1,18 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import OpenAI from 'openai';
-import { env } from '@/config/env';
+import { rateLimit, getRateLimitIdentifier, rateLimitConfigs } from '@/lib/api/rate-limit';
+import { safeLogError } from '@/lib/log-sanitizer';
+import { getOpenAIClient, hasOpenAIConfig } from '@/lib/api/openai-client';
+import { z } from 'zod';
 
-let openai: OpenAI | null = null;
-
-function getOpenAIClient(): OpenAI {
-  if (!openai) {
-    const apiKey = env.aiGatewayApiKey || env.openaiApiKey;
-    const baseURL = env.aiGatewayUrl;
-    
-    if (!apiKey) {
-      const possibleKeys = [
-        'VERCEL_AI_GATEWAY_API_KEY',
-        'AI_GATEWAY_API_KEY',
-        'AIGATEWAYAPI',
-        'OPENAI_API_KEY'
-      ].join(', ');
-      throw new Error(`OpenAI API key not configured. Please set one of: ${possibleKeys}`);
-    }
-    
-    if (process.env.NODE_ENV === 'development') {
-      if (env.aiGatewayApiKey && env.aiGatewayUrl) {
-        console.log('[Agent Chat] Using Vercel AI Gateway');
-      } else if (env.openaiApiKey) {
-        console.log('[Agent Chat] Using direct OpenAI API');
-      }
-    }
-    
-    openai = new OpenAI({
-      apiKey: apiKey,
-      ...(baseURL && { baseURL: baseURL }),
-    });
-  }
-  return openai;
-}
+// Validation schema
+const agentChatSchema = z.object({
+  message: z.string().min(1).max(5000, { message: 'Message must be between 1 and 5000 characters' }),
+  agentType: z.enum(['harry', 'trading', 'vision']).optional().default('harry'),
+  context: z.record(z.unknown()).optional().default({}),
+  model: z.string().optional().default('gpt-4'),
+  temperature: z.number().min(0).max(2).optional().default(0.7),
+  max_tokens: z.number().min(1).max(4000).optional().default(1000),
+});
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -47,26 +26,40 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   res.setHeader('X-Accel-Buffering', 'no');
 
   try {
-    if (!env.openaiApiKey && !env.aiGatewayApiKey) {
+    // Rate limiting
+    const identifier = getRateLimitIdentifier(req);
+    const rateLimitResult = await rateLimit(identifier, rateLimitConfigs.aiGeneration);
+    
+    if (!rateLimitResult.success) {
+      res.write(`data: ${JSON.stringify({ 
+        error: 'Rate limit exceeded. Please try again later.', 
+        done: true,
+        retryAfter: Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000),
+      })}\n\n`);
+      res.end();
+      return;
+    }
+
+    // Check API key configuration
+    if (!hasOpenAIConfig()) {
       res.write(`data: ${JSON.stringify({ error: 'OpenAI API key not configured', done: true })}\n\n`);
       res.end();
       return;
     }
 
-    const { 
-      message, 
-      agentType = 'harry', // 'harry', 'trading', 'vision'
-      context = {},
-      model = 'gpt-4',
-      temperature = 0.7,
-      max_tokens = 1000 
-    } = req.body;
-
-    if (!message) {
-      res.write(`data: ${JSON.stringify({ error: 'Message is required', done: true })}\n\n`);
+    // Validate input
+    const validation = agentChatSchema.safeParse(req.body);
+    if (!validation.success) {
+      res.write(`data: ${JSON.stringify({ 
+        error: 'Invalid request data',
+        details: validation.error.errors,
+        done: true 
+      })}\n\n`);
       res.end();
       return;
     }
+
+    const { message, agentType, context, model, temperature, max_tokens } = validation.data;
 
     const client = getOpenAIClient();
 
@@ -133,7 +126,8 @@ Be creative, engaging, and inspiring. Use markdown formatting.`;
     res.write(`data: ${JSON.stringify({ content: '', done: true })}\n\n`);
     res.end();
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    safeLogError('Agent chat error', error);
+    const errorMessage = error instanceof Error ? error.message : 'An error occurred while processing your request';
     res.write(`data: ${JSON.stringify({ error: errorMessage, done: true })}\n\n`);
     res.end();
   }

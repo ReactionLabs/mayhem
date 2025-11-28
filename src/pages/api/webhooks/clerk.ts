@@ -7,11 +7,36 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import { Webhook } from 'svix';
 import { headers } from 'next/headers';
 import { supabase } from '@/lib/supabase';
+import { encryptSecret } from '@/lib/encryption';
+import { safeLogError } from '@/lib/log-sanitizer';
 
-// Simple encryption for private keys (in production, use proper encryption)
+/**
+ * Encrypt private key for database storage
+ * Uses AES-256-GCM encryption from encryption.ts
+ */
 function encryptPrivateKey(privateKey: string): string {
-  // Mock encryption - in production, use a proper encryption library
-  return Buffer.from(privateKey).toString('base64');
+  try {
+    const { cipherText, iv } = encryptSecret(privateKey);
+    // Store as JSON string with format: {cipherText, iv}
+    return JSON.stringify({ cipherText, iv });
+  } catch (error) {
+    safeLogError('Failed to encrypt private key', error);
+    // Fallback to base64 if encryption fails (shouldn't happen in production)
+    return Buffer.from(privateKey).toString('base64');
+  }
+}
+
+/**
+ * Encrypt API key for database storage
+ */
+function encryptApiKey(apiKey: string): string {
+  try {
+    const { cipherText, iv } = encryptSecret(apiKey);
+    return JSON.stringify({ cipherText, iv });
+  } catch (error) {
+    safeLogError('Failed to encrypt API key', error);
+    return Buffer.from(apiKey).toString('base64');
+  }
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -107,14 +132,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         throw new Error('Invalid wallet data received from PumpPortal');
       }
 
-      // 3. Store wallet in database
+      // 3. Store wallet in database with encrypted private key and API key
       const { error: walletError } = await supabase
         .from('wallets')
         .insert({
           user_id: user.id,
           public_key: walletData.publicKey,
           private_key_encrypted: encryptPrivateKey(walletData.privateKey),
-          api_key: walletData.apiKey,
+          api_key: encryptApiKey(walletData.apiKey), // Encrypt API key too
           is_primary: true,
           label: 'Main Wallet',
         });

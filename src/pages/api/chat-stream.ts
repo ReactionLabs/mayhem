@@ -1,40 +1,19 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import OpenAI from 'openai';
-import { env } from '@/config/env';
+import { rateLimit, getRateLimitIdentifier, rateLimitConfigs } from '@/lib/api/rate-limit';
+import { safeLogError } from '@/lib/log-sanitizer';
+import { getOpenAIClient, hasOpenAIConfig } from '@/lib/api/openai-client';
+import { z } from 'zod';
 
-// Initialize OpenAI client lazily
-let openai: OpenAI | null = null;
-
-function getOpenAIClient(): OpenAI {
-  if (!openai) {
-    const apiKey = env.aiGatewayApiKey || env.openaiApiKey;
-    const baseURL = env.aiGatewayUrl;
-    
-    if (!apiKey) {
-      const possibleKeys = [
-        'VERCEL_AI_GATEWAY_API_KEY',
-        'AI_GATEWAY_API_KEY',
-        'AIGATEWAYAPI',
-        'OPENAI_API_KEY'
-      ].join(', ');
-      throw new Error(`OpenAI API key not configured. Please set one of: ${possibleKeys}`);
-    }
-    
-    if (process.env.NODE_ENV === 'development') {
-      if (env.aiGatewayApiKey && env.aiGatewayUrl) {
-        console.log('[Chat Stream] Using Vercel AI Gateway');
-      } else if (env.openaiApiKey) {
-        console.log('[Chat Stream] Using direct OpenAI API');
-      }
-    }
-    
-    openai = new OpenAI({
-      apiKey: apiKey,
-      ...(baseURL && { baseURL: baseURL }),
-    });
-  }
-  return openai;
-}
+// Validation schema
+const chatStreamSchema = z.object({
+  messages: z.array(z.object({
+    role: z.enum(['system', 'user', 'assistant']),
+    content: z.string().min(1),
+  })).min(1).max(50, { message: 'Maximum 50 messages allowed' }),
+  model: z.string().optional().default('gpt-4'),
+  temperature: z.number().min(0).max(2).optional().default(0.7),
+  max_tokens: z.number().min(1).max(4000).optional().default(1000),
+});
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -48,20 +27,40 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
 
   try {
+    // Rate limiting
+    const identifier = getRateLimitIdentifier(req);
+    const rateLimitResult = await rateLimit(identifier, rateLimitConfigs.aiGeneration);
+    
+    if (!rateLimitResult.success) {
+      res.write(`data: ${JSON.stringify({ 
+        error: 'Rate limit exceeded. Please try again later.', 
+        done: true,
+        retryAfter: Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000),
+      })}\n\n`);
+      res.end();
+      return;
+    }
+
     // Check if OpenAI API key is available
-    if (!env.openaiApiKey && !env.aiGatewayApiKey) {
+    if (!hasOpenAIConfig()) {
       res.write(`data: ${JSON.stringify({ error: 'OpenAI API key not configured', done: true })}\n\n`);
       res.end();
       return;
     }
 
-    const { messages, model = 'gpt-4', temperature = 0.7, max_tokens = 1000 } = req.body;
-
-    if (!messages || !Array.isArray(messages) || messages.length === 0) {
-      res.write(`data: ${JSON.stringify({ error: 'Messages array is required', done: true })}\n\n`);
+    // Validate input
+    const validation = chatStreamSchema.safeParse(req.body);
+    if (!validation.success) {
+      res.write(`data: ${JSON.stringify({ 
+        error: 'Invalid request data',
+        details: validation.error.errors,
+        done: true 
+      })}\n\n`);
       res.end();
       return;
     }
+
+    const { messages, model, temperature, max_tokens } = validation.data;
 
     const client = getOpenAIClient();
 
@@ -86,7 +85,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.write(`data: ${JSON.stringify({ content: '', done: true })}\n\n`);
     res.end();
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    safeLogError('Chat stream error', error);
+    const errorMessage = error instanceof Error ? error.message : 'An error occurred while processing your request';
     res.write(`data: ${JSON.stringify({ error: errorMessage, done: true })}\n\n`);
     res.end();
   }

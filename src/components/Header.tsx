@@ -1,5 +1,5 @@
 import React from 'react';
-import { useUnifiedWalletContext, useWallet } from '@jup-ag/wallet-adapter';
+import { useUnifiedWalletContext, useWallet, useConnection } from '@jup-ag/wallet-adapter';
 // Clerk removed - wallet-only authentication
 import Link from 'next/link';
 import { Button } from './ui/button';
@@ -21,6 +21,7 @@ import { toast } from 'sonner';
 import { debounce } from '@/lib/debounce';
 import { useNonceAuth } from '@/hooks/useNonceAuth';
 import { Zap, CheckCircle2 } from 'lucide-react';
+import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 
 /**
  * Header Component
@@ -32,6 +33,7 @@ export const Header = () => {
   // Solana Wallet: Blockchain connection
   const walletContext = useUnifiedWalletContext();
   const wallet = useWallet();
+  const { connection } = useConnection();
   const setShowModal = walletContext?.setShowModal;
   const disconnect = wallet.disconnect;
   const publicKey = wallet.publicKey;
@@ -43,17 +45,15 @@ export const Header = () => {
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
   const [showSolValue, setShowSolValue] = useState(false);
 
-  // Fetch SOL balance for connected wallet using service layer
+  // Fetch SOL balance for connected wallet using connection directly
   useEffect(() => {
-    if (!publicKey) {
+    if (!publicKey || !connection) {
       setSolBalance(null);
       setIsLoadingBalance(false);
       return;
     }
 
     let cancelled = false;
-    let retryCount = 0;
-    const maxRetries = 2;
 
     const fetchBalance = async () => {
       if (cancelled) return;
@@ -61,42 +61,18 @@ export const Header = () => {
       setIsLoadingBalance(true);
       
       try {
-        // Use the service layer which handles fallbacks automatically
-        const { solanaService } = await import('@/services/blockchain');
-        const balance = await solanaService.getBalance(publicKey.toBase58());
+        const lamports = await connection.getBalance(publicKey, 'confirmed');
         
         if (!cancelled) {
-          // -1 means unavailable, >= 0 means valid balance
-          setSolBalance(balance >= 0 ? balance : null);
-          retryCount = 0; // Reset retry count on success
+          setSolBalance(lamports / LAMPORTS_PER_SOL);
         }
       } catch (error: any) {
-        // Check if it's a 403 error - service layer should handle this, but catch just in case
-        const is403 = 
-          error?.code === 403 ||
-          error?.message?.includes('403') ||
-          error?.message?.includes('Access forbidden') ||
-          error?.message?.includes('forbidden');
-        
-        // Only log non-403 errors in development (403s are expected and handled gracefully)
-        if (process.env.NODE_ENV === 'development' && !is403) {
+        // Only log errors in development
+        if (process.env.NODE_ENV === 'development') {
           console.error('Failed to fetch balance:', error);
         }
         
-        // For 403 errors, set balance to null (unavailable) without retrying
-        if (is403 && !cancelled) {
-          setSolBalance(null);
-          return;
-        }
-        
-        // Retry logic for transient errors (not 403s)
-        if (retryCount < maxRetries && !cancelled && !is403) {
-          retryCount++;
-          setTimeout(() => {
-            if (!cancelled) fetchBalance();
-          }, 1000 * retryCount); // Exponential backoff
-        } else if (!cancelled) {
-          // After max retries, set to null to show unavailable
+        if (!cancelled) {
           setSolBalance(null);
         }
       } finally {
@@ -106,24 +82,21 @@ export const Header = () => {
       }
     };
 
-    // Initial fetch with small delay to avoid race conditions
-    const timeoutId = setTimeout(() => {
-      fetchBalance();
-    }, 300);
+    // Initial fetch
+    fetchBalance();
     
     // Set up polling interval (refresh every 15 seconds)
     const interval = setInterval(() => {
-      if (!cancelled && publicKey) {
+      if (!cancelled && publicKey && connection) {
         fetchBalance();
       }
     }, 15000);
 
     return () => {
       cancelled = true;
-      clearTimeout(timeoutId);
       clearInterval(interval);
     };
-  }, [publicKey]);
+  }, [publicKey, connection]);
 
   const handleConnectWallet = () => {
     if (setShowModal) {

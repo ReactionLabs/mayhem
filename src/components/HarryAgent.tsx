@@ -47,6 +47,9 @@ export const HarryAgent: React.FC = () => {
     executeTrade,
     generateImage,
     generateContent,
+    getStoredWallets,
+    getCurrentWallet,
+    setCurrentWallet,
     isWalletGenerating,
     isCoinCreating,
     isTrading,
@@ -59,15 +62,21 @@ export const HarryAgent: React.FC = () => {
 
   useEffect(() => {
     setIsHydrated(true);
-    setMessages([
-      {
-        id: '1',
-        role: 'harry',
-        content: "Hello! I'm Harry, your AI trading agent. I can help you:\n\n🎯 **Generate wallets** from PumpPortal\n🚀 **Create meme coins** with AI-generated content\n📈 **Execute trades** automatically\n🎨 **Generate images & memes** for promotion\n💬 **Create viral content** to post about your tokens\n\nWhat would you like me to help you with today?",
-        timestamp: new Date(),
-        type: 'text'
-      }
-    ]);
+    const loadInitialMessage = async () => {
+      const currentWallet = await getCurrentWallet();
+      const walletInfo = currentWallet ? `\`${currentWallet.publicKey.slice(0, 8)}...\`` : 'None - say "generate wallet" to create one';
+      
+      setMessages([
+        {
+          id: '1',
+          role: 'harry',
+          content: "Hello! I'm Harry, your AI trading agent. I can help you:\n\n🎯 **Generate wallets** from PumpPortal (stored securely)\n🚀 **Create & launch meme coins** with AI-generated content and images\n📈 **Execute trades** automatically using stored wallets\n🎨 **Generate images & memes** for token promotion\n💬 **Create viral content** to post about your tokens\n\n**Current Wallet:** " + walletInfo + "\n\nWhat would you like me to help you with today?",
+          timestamp: new Date(),
+          type: 'text'
+        }
+      ]);
+    };
+    loadInitialMessage();
   }, []);
 
   useEffect(() => {
@@ -238,19 +247,51 @@ export const HarryAgent: React.FC = () => {
 
     // Meme coin creation
     if (cmd.includes('create') && (cmd.includes('coin') || cmd.includes('meme') || cmd.includes('token'))) {
-      const coinData = await createMemeCoin(command);
-      return {
-        message: `🚀 **Meme Coin Created!**\n\n**Name:** ${coinData.name}\n**Symbol:** ${coinData.symbol}\n**Description:** ${coinData.description}\n**Contract:** \`${coinData.contractAddress}\`\n\n**AI Generated Content:**\n${coinData.content}`,
-        type: 'action',
-        data: { action: 'coin_created', coin: coinData }
-      };
+      const autoLaunch = cmd.includes('launch') || cmd.includes('deploy');
+      const coinData = await createMemeCoin(command, autoLaunch);
+      
+      // Check if it's a token creation result (launched) or just coin data
+      if ('mintAddress' in coinData) {
+        // Token was launched
+        return {
+          message: `🚀 **Token Launched Successfully!**\n\n**Name:** ${coinData.name}\n**Symbol:** ${coinData.symbol}\n**Mint Address:** \`${coinData.mintAddress}\`\n**Transaction:** \`${coinData.transactionSignature}\`\n**Metadata URI:** \`${coinData.metadataUri}\`\n\n✅ Your token is now live on Pump.fun!`,
+          type: 'action',
+          data: { action: 'token_launched', token: coinData }
+        };
+      } else {
+        // Coin created but not launched
+        return {
+          message: `🎨 **Meme Coin Created!**\n\n**Name:** ${coinData.name}\n**Symbol:** ${coinData.symbol}\n**Description:** ${coinData.description}\n**Status:** ${coinData.contractAddress}\n\n**AI Generated Content:**\n${coinData.content}\n\n💡 Say "launch this token" or "deploy this coin" to launch it on Pump.fun!`,
+          type: 'action',
+          data: { action: 'coin_created', coin: coinData }
+        };
+      }
     }
 
     // Trading - Enhanced with more actions
     if (cmd.includes('trade') || cmd.includes('buy') || cmd.includes('sell') || cmd.includes('execute')) {
-      const tradeResult = await executeTrade(command);
+      const currentWallet = getCurrentWallet();
+      if (!currentWallet) {
+        return {
+          message: `❌ **No Wallet Available**\n\nPlease generate a wallet first by saying "generate wallet" or "create wallet".`,
+          type: 'text'
+        };
+      }
+
+      // Try to extract token mint from command
+      const mintMatch = cmd.match(/([A-Za-z0-9]{32,44})/);
+      const tokenMint = mintMatch ? mintMatch[1] : undefined;
+      
+      if (!tokenMint && !cmd.includes('token')) {
+        return {
+          message: `📈 **Trade Command**\n\nTo execute a trade, provide a token address:\n- "Buy 0.1 SOL of [token_address]"\n- "Sell 0.05 SOL of [token_address]"\n\nOr visit a token page and say "buy 0.1 SOL" to trade the current token.`,
+          type: 'text'
+        };
+      }
+
+      const tradeResult = await executeTrade(command, tokenMint);
       return {
-        message: `📈 **Trade Executed!**\n\n**Action:** ${tradeResult.action}\n**Token:** ${tradeResult.token}\n**Amount:** ${tradeResult.amount} SOL\n**Status:** ✅ Success\n**Tx Hash:** \`${tradeResult.txHash}\`\n\n**Next Steps:**\n- Monitor position in dashboard\n- Set stop-loss if needed\n- Track performance in portfolio`,
+        message: `📈 **Trade Executed!**\n\n**Action:** ${tradeResult.action}\n**Token:** \`${tradeResult.token}\`\n**Amount:** ${tradeResult.amount} SOL\n**Status:** ✅ Success\n**Tx Hash:** \`${tradeResult.txHash}\`\n\n**Next Steps:**\n- Monitor position in dashboard\n- Set stop-loss if needed\n- Track performance in portfolio`,
         type: 'action',
         data: { action: 'trade_executed', trade: tradeResult }
       };

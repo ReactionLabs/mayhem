@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { storeWallet, getStoredWallets, getCurrentWallet, setCurrentWallet, type StoredWallet } from '@/lib/wallet-storage';
 
 interface GeneratedWallet {
   publicKey: string;
@@ -68,23 +69,41 @@ export const useHarryAgent = () => {
         throw new Error('Missing API key in wallet data');
       }
 
-      return {
+      const walletData = {
         publicKey: data.publicKey || data.address,
         privateKey: data.privateKey || data.secretKey,
         apiKey: data.apiKey,
       };
+
+      // Store the wallet for Harry to use
+      const existingWallets = await getStoredWallets();
+      const stored = await storeWallet({
+        ...walletData,
+        label: `Harry Wallet ${existingWallets.length + 1}`,
+      });
+
+      toast.success('Wallet generated and stored!');
+      
+      return walletData;
     } catch (error) {
       console.error('Wallet generation error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to generate wallet');
       throw error;
     } finally {
       setIsWalletGenerating(false);
     }
   };
 
-  const createMemeCoin = async (prompt: string): Promise<MemeCoin> => {
+  const createMemeCoin = async (prompt: string, autoLaunch: boolean = false): Promise<MemeCoin | { mintAddress: string; transactionSignature: string; name: string; symbol: string; metadataUri: string }> => {
     setIsCoinCreating(true);
     try {
-      // Generate coin details using AI
+      // Get current wallet
+      const currentWallet = await getCurrentWallet();
+      if (!currentWallet) {
+        throw new Error('No wallet available. Please generate a wallet first by saying "generate wallet".');
+      }
+
+      // Step 1: Generate coin details using AI
       const coinDetailsResponse = await fetch('/api/generate-ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -96,93 +115,273 @@ export const useHarryAgent = () => {
 
       if (!coinDetailsResponse.ok) {
         let errorText = await coinDetailsResponse.text();
-        console.error('Coin generation API error:', errorText);
-        
-        // Try to parse as JSON if it's HTML, extract meaningful error
         let errorMessage = `Failed to generate coin details (${coinDetailsResponse.status})`;
         try {
           const errorJson = JSON.parse(errorText);
           errorMessage = errorJson.error || errorMessage;
         } catch {
-          // If it's HTML, provide a user-friendly message
           if (errorText.includes('<!DOCTYPE') || errorText.includes('<html')) {
             errorMessage = 'OpenAI API key not configured. Please add OPENAI_API_KEY to your .env.local file.';
           } else {
-            errorMessage = errorText.slice(0, 200); // Limit error text length
+            errorMessage = errorText.slice(0, 200);
           }
         }
-        
         throw new Error(errorMessage);
       }
 
       const coinData = await coinDetailsResponse.json();
-      
-      // Validate response structure
       if (!coinData.success) {
         throw new Error(coinData.error || 'Failed to generate coin details');
       }
 
-      // Generate promotional content
-      const contentResponse = await fetch('/api/generate-ai', {
+      const coinInfo = coinData.result || coinData;
+      const tokenName = coinInfo.name || 'Meme Coin';
+      const tokenSymbol = coinInfo.symbol || 'MEME';
+      const description = coinInfo.description || 'A hilarious meme coin';
+
+      // Step 2: Generate image
+      let imageUrl: string | undefined;
+      try {
+        const imageResponse = await fetch('/api/generate-ai', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'image',
+            prompt: `Create a fun, meme-style logo for a cryptocurrency token called "${tokenName}" (${tokenSymbol}). Make it colorful, eye-catching, and suitable for a meme coin.`,
+            quality: 'standard',
+            size: '1024x1024',
+          }),
+        });
+
+        if (imageResponse.ok) {
+          const imageData = await imageResponse.json();
+          imageUrl = imageData.result || imageData.url;
+        }
+      } catch (error) {
+        console.warn('Image generation failed, continuing without image:', error);
+      }
+
+      // Step 3: Upload metadata
+      let base64Logo = '';
+      if (imageUrl) {
+        try {
+          const imageResponse = await fetch(imageUrl);
+          const blob = await imageResponse.blob();
+          base64Logo = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+        } catch (error) {
+          console.warn('Failed to convert image to base64:', error);
+        }
+      }
+
+      const uploadResponse = await fetch('/api/upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type: 'content',
-          prompt: `Create viral social media content for a meme coin named "${coinData.result?.name || coinData.name || 'MemeCoin'}". Include tweets, memes, and promotional copy.`,
+          tokenLogo: base64Logo || '',
+          tokenName: tokenName,
+          tokenSymbol: tokenSymbol,
+          description: description,
+          twitter: '',
+          telegram: '',
+          website: '',
         }),
       });
 
-      if (!contentResponse.ok) {
-        // If content generation fails, continue with coin data only
-        console.warn('Content generation failed, continuing with coin data only');
+      if (!uploadResponse.ok) {
+        const errorData = await uploadResponse.json().catch(() => ({}));
+        throw new Error(errorData.error || errorData.message || 'Failed to upload token metadata');
       }
 
-      let contentData;
+      const { metadataUri } = await uploadResponse.json();
+
+      // Step 4: Generate content
+      let content = 'Viral content will be generated soon!';
       try {
-        contentData = await contentResponse.json();
+        const contentResponse = await fetch('/api/generate-ai', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'content',
+            prompt: `Create viral social media content for a meme coin named "${tokenName}" (${tokenSymbol}). Include tweets, memes, and promotional copy.`,
+          }),
+        });
+
+        if (contentResponse.ok) {
+          const contentData = await contentResponse.json();
+          content = contentData?.result || contentData?.content || content;
+        }
       } catch {
-        contentData = { result: 'Viral content will be generated soon!' };
+        // Continue without content
       }
 
-      // Extract coin data from response
-      const coinInfo = coinData.result || coinData;
-      
+      // If autoLaunch, launch the token
+      if (autoLaunch) {
+        // Generate mint address
+        const { Keypair } = await import('@solana/web3.js');
+        const mintKeypair = Keypair.generate();
+        const mintAddress = mintKeypair.publicKey.toBase58();
+
+        // Create token via PumpPortal
+        const createResponse = await fetch('https://pumpportal.fun/api/trade-local', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            publicKey: currentWallet.publicKey,
+            action: 'create',
+            tokenMetadata: {
+              name: tokenName,
+              symbol: tokenSymbol,
+              uri: metadataUri,
+            },
+            mint: mintAddress,
+            denominatedInSol: 'true',
+            amount: 0.1, // Default initial buy
+            slippage: 10,
+            priorityFee: 0.0005,
+            pool: 'pump',
+            isMayhemMode: 'false',
+          }),
+        });
+
+        if (!createResponse.ok) {
+          const errorData = await createResponse.json().catch(() => ({}));
+          throw new Error(errorData.error || errorData.message || 'Failed to create token');
+        }
+
+        const transactionData = await createResponse.json();
+        let txString: string;
+        if (Array.isArray(transactionData)) {
+          txString = transactionData[0];
+        } else if (typeof transactionData === 'string') {
+          txString = transactionData;
+        } else if (transactionData.transaction) {
+          txString = transactionData.transaction;
+        } else {
+          throw new Error('Invalid response format from PumpPortal');
+        }
+
+        // Sign and send
+        const { VersionedTransaction } = await import('@solana/web3.js');
+        const bs58 = (await import('bs58')).default;
+        const txBytes = bs58.decode(txString);
+        const tx = VersionedTransaction.deserialize(new Uint8Array(txBytes));
+        tx.sign([mintKeypair]);
+
+        const signedTxString = bs58.encode(tx.serialize());
+        const tradeResponse = await fetch(`https://pumpportal.fun/api/trade?api-key=${currentWallet.apiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            transaction: signedTxString,
+            mint: mintAddress,
+          }),
+        });
+
+        if (!tradeResponse.ok) {
+          const errorData = await tradeResponse.json().catch(() => ({}));
+          throw new Error(errorData.error || errorData.message || 'Failed to launch token');
+        }
+
+        const tradeData = await tradeResponse.json();
+        const signature = tradeData.signature || tradeData.txHash || 'pending';
+
+        toast.success('Token launched successfully!');
+        
+        return {
+          mintAddress,
+          transactionSignature: signature,
+          name: tokenName,
+          symbol: tokenSymbol,
+          metadataUri,
+        };
+      }
+
       return {
-        name: coinInfo.name || 'Meme Coin',
-        symbol: coinInfo.symbol || 'MEME',
-        description: coinInfo.description || 'A hilarious meme coin',
-        contractAddress: 'To be created...', // This would be the actual contract after creation
-        content: contentData?.result || contentData?.content || 'Viral content generated!',
+        name: tokenName,
+        symbol: tokenSymbol,
+        description: description,
+        contractAddress: 'Ready to launch...',
+        content: content,
+        imageUrl: imageUrl,
       };
     } catch (error) {
       console.error('Coin creation error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to create meme coin');
       throw error;
     } finally {
       setIsCoinCreating(false);
     }
   };
 
-  const executeTrade = async (command: string): Promise<TradeResult> => {
+  const executeTrade = async (command: string, tokenMint?: string): Promise<TradeResult> => {
     setIsTrading(true);
     try {
+      // Get current wallet
+      const currentWallet = await getCurrentWallet();
+      if (!currentWallet) {
+        throw new Error('No wallet available. Please generate a wallet first by saying "generate wallet".');
+      }
+
       // Parse trade command
       const cmd = command.toLowerCase();
       const isBuy = cmd.includes('buy');
       const amountMatch = cmd.match(/(\d+(?:\.\d+)?)/);
       const amount = amountMatch ? parseFloat(amountMatch[1]) : 0.1;
 
-      // For demo purposes, simulate a trade
-      // In production, this would use the PumpPortal API with a generated wallet
-      await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate API call
+      // Extract token mint if not provided
+      if (!tokenMint) {
+        const mintMatch = cmd.match(/([A-Za-z0-9]{32,44})/);
+        if (mintMatch) {
+          tokenMint = mintMatch[1];
+        } else {
+          throw new Error('Token address not specified. Please provide a token mint address.');
+        }
+      }
 
+      // Execute trade using PumpPortal API
+      const response = await fetch('/api/trade-pump', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': currentWallet.apiKey,
+        },
+        body: JSON.stringify({
+          action: isBuy ? 'buy' : 'sell',
+          mint: tokenMint,
+          amount: amount,
+          denominatedInSol: true,
+          slippage: 10,
+          priorityFee: 0.0005,
+          pool: 'pump',
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || errorData.message || 'Failed to execute trade');
+      }
+
+      const tradeData = await response.json();
+      const signature = tradeData.signature || tradeData.txHash || 'pending';
+
+      toast.success(`${isBuy ? 'Buy' : 'Sell'} order executed!`);
+      
       return {
         action: isBuy ? 'buy' : 'sell',
-        token: 'SIMULATED_TOKEN',
+        token: tokenMint,
         amount,
-        txHash: `simulated_tx_${Date.now()}`,
+        txHash: signature,
       };
     } catch (error) {
       console.error('Trade execution error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to execute trade');
       throw error;
     } finally {
       setIsTrading(false);
@@ -253,6 +452,9 @@ export const useHarryAgent = () => {
     executeTrade,
     generateImage,
     generateContent,
+    getStoredWallets,
+    getCurrentWallet,
+    setCurrentWallet,
     isWalletGenerating,
     isCoinCreating,
     isTrading,

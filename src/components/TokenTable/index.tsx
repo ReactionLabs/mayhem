@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './Tabs';
 import { cn } from '@/lib/utils';
 import { TxnsTab } from './TxnsTab';
 import { HoldersTab } from './HoldersTab';
+import { BubbleMapsTab } from './BubbleMapsTab';
 
 type TokenBottomPanelProps = {
   className?: string;
@@ -41,6 +42,10 @@ export const TokenBottomPanel: React.FC<TokenBottomPanelProps> = memo(({ classNa
           <TabsTrigger value={BottomPanelTab.HOLDERS}>
             <span>{`Holders`}</span>
           </TabsTrigger>
+
+          <TabsTrigger value={BottomPanelTab.BUBBLEMAPS}>
+            <span>{`Bubble Maps`}</span>
+          </TabsTrigger>
         </TabsList>
       </div>
 
@@ -50,6 +55,10 @@ export const TokenBottomPanel: React.FC<TokenBottomPanelProps> = memo(({ classNa
 
       <TabsContent className="contents" value={BottomPanelTab.HOLDERS}>
         <HoldersTab />
+      </TabsContent>
+
+      <TabsContent className="contents" value={BottomPanelTab.BUBBLEMAPS}>
+        <BubbleMapsTab />
       </TabsContent>
     </Tabs>
   );

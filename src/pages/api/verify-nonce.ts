@@ -1,6 +1,10 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { PublicKey } from '@solana/web3.js';
 import bs58 from 'bs58';
+import nacl from 'tweetnacl';
+import { rateLimit, getRateLimitIdentifier, rateLimitConfigs } from '@/lib/api/rate-limit';
+import { safeLogError } from '@/lib/log-sanitizer';
+import { nonceVerificationSchema, validateRequest } from '@/lib/api/validation';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -8,47 +12,73 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const { publicKey, nonce, signature } = req.body;
-
-    if (!publicKey || !nonce || !signature) {
-      return res.status(400).json({ error: 'Missing required fields' });
+    // Rate limiting
+    const identifier = getRateLimitIdentifier(req);
+    const rateLimitResult = await rateLimit(identifier, rateLimitConfigs.general);
+    
+    if (!rateLimitResult.success) {
+      return res.status(429).json({
+        error: 'Rate limit exceeded',
+        retryAfter: Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000),
+      });
     }
 
-    // Reconstruct the message that was signed
+    // Input validation
+    const validation = validateRequest(nonceVerificationSchema, req.body);
+    if (!validation.success) {
+      return res.status(400).json({
+        error: 'Invalid request data',
+        details: validation.error.errors,
+      });
+    }
+
+    const { publicKey, nonce, signature } = validation.data;
+
+    // Reconstruct the message that was signed (must match exactly)
     const message = new TextEncoder().encode(
       `Sign this message to enable quick trading on Mayhem.\n\nNonce: ${nonce}\n\nThis signature will be valid for 24 hours.`
     );
 
-    // Verify the signature
-    // Note: Solana uses ed25519 signatures. For proper verification, we'd need tweetnacl
-    // For now, we'll store and verify on the client side, or use a simpler approach
-    // In production, implement proper ed25519 signature verification with tweetnacl
     try {
-      const publicKeyObj = new PublicKey(publicKey);
+      // Decode public key and signature
+      const publicKeyBytes = bs58.decode(publicKey);
       const signatureBytes = bs58.decode(signature);
-      
-      // Basic validation - check format
-      // TODO: Add tweetnacl for proper ed25519 verification
-      // For now, we'll do basic format validation
-      const isValid = 
-        signatureBytes.length > 0 && 
-        publicKeyObj.toBase58().length > 0 &&
-        nonce.length > 0;
-      
-      // Store nonce signature for quick trading (client-side verification)
-      // In production, implement server-side verification with tweetnacl
+
+      // Verify ed25519 signature using tweetnacl
+      const isValid = nacl.sign.detached.verify(message, signatureBytes, publicKeyBytes);
+
+      if (!isValid) {
+        return res.status(400).json({
+          valid: false,
+          error: 'Invalid signature',
+          message: 'Signature verification failed. Please sign the message again.',
+        });
+      }
+
+      // Verify public key format
+      try {
+        new PublicKey(publicKey);
+      } catch {
+        return res.status(400).json({
+          valid: false,
+          error: 'Invalid public key format',
+        });
+      }
 
       return res.status(200).json({
-        valid: isValid,
+        valid: true,
         publicKey,
-        message: isValid 
-          ? 'Nonce signature verified. Quick trading enabled for 24 hours.'
-          : 'Invalid signature format',
+        message: 'Nonce signature verified. Quick trading enabled for 24 hours.',
       });
-  } catch (error) {
-    if (process.env.NODE_ENV === 'development') {
-      console.error('Nonce verification error:', error);
+    } catch (error) {
+      safeLogError('Nonce verification error', error);
+      return res.status(500).json({
+        error: 'Failed to verify nonce signature',
+        valid: false,
+      });
     }
+  } catch (error) {
+    safeLogError('Nonce verification error', error);
     return res.status(500).json({
       error: 'Failed to verify nonce signature',
       valid: false,

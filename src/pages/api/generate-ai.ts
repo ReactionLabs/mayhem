@@ -1,43 +1,8 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import OpenAI from 'openai';
+import { rateLimit, getRateLimitIdentifier, rateLimitConfigs } from '@/lib/api/rate-limit';
+import { safeLogError } from '@/lib/log-sanitizer';
+import { getOpenAIClient, hasOpenAIConfig } from '@/lib/api/openai-client';
 import { env } from '@/config/env';
-
-// Initialize OpenAI client lazily to avoid errors if API key is missing
-let openai: OpenAI | null = null;
-
-function getOpenAIClient(): OpenAI {
-  if (!openai) {
-    // Check for AI Gateway first, then fallback to direct OpenAI
-    const apiKey = env.aiGatewayApiKey || env.openaiApiKey;
-    const baseURL = env.aiGatewayUrl;
-    
-    if (!apiKey) {
-      // Provide helpful error message with all possible env var names
-      const possibleKeys = [
-        'VERCEL_AI_GATEWAY_API_KEY',
-        'AI_GATEWAY_API_KEY',
-        'AIGATEWAYAPI',
-        'OPENAI_API_KEY'
-      ].join(', ');
-      throw new Error(`OpenAI API key not configured. Please set one of: ${possibleKeys}`);
-    }
-    
-    // Log which method is being used (only in development)
-    if (process.env.NODE_ENV === 'development') {
-      if (env.aiGatewayApiKey && env.aiGatewayUrl) {
-        console.log('[AI] Using Vercel AI Gateway');
-      } else if (env.openaiApiKey) {
-        console.log('[AI] Using direct OpenAI API');
-      }
-    }
-    
-    openai = new OpenAI({
-      apiKey: apiKey,
-      ...(baseURL && { baseURL: baseURL }),
-    });
-  }
-  return openai;
-}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -45,8 +10,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
+    // Rate limiting
+    const identifier = getRateLimitIdentifier(req);
+    const rateLimitResult = await rateLimit(identifier, rateLimitConfigs.aiGeneration);
+    
+    if (!rateLimitResult.success) {
+      return res.status(429).json({
+        error: 'Rate limit exceeded',
+        retryAfter: Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000),
+      });
+    }
+
     // Check if OpenAI API key is available (either direct or via gateway)
-    if (!env.openaiApiKey && !env.aiGatewayApiKey) {
+    if (!hasOpenAIConfig()) {
       return res.status(500).json({
         error: 'OpenAI API key not configured. Please add OPENAI_API_KEY or AIGATEWAYAPI to your .env file. Get your API key from: https://platform.openai.com/api-keys',
         setupRequired: true
@@ -87,7 +63,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       result,
     });
   } catch (error) {
-    console.error('AI Generation error:', error);
+    safeLogError('AI Generation error', error);
     // Ensure we always return JSON, never HTML
     const errorMessage = error instanceof Error ? error.message : 'Failed to generate content';
     return res.status(500).json({
