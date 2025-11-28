@@ -106,15 +106,19 @@ export const TradingCompanion: React.FC<TradingCompanionProps> = ({
 
       const data = await response.json();
       
-      // Validate response structure
-      if (!data.publicKey || !data.privateKey || !data.apiKey) {
-        throw new Error('Invalid wallet data received from PumpPortal');
+      // Handle PumpPortal API field name variations: walletPublicKey vs publicKey
+      const publicKey = data.publicKey || data.walletPublicKey || data.address;
+      const privateKey = data.privateKey || data.secretKey;
+      const apiKey = data.apiKey || data.api;
+
+      if (!publicKey || !privateKey || !apiKey) {
+        throw new Error(`Invalid wallet data received from PumpPortal. Got keys: ${JSON.stringify(Object.keys(data))}`);
       }
 
       const wallet: WalletData = {
-        publicKey: data.publicKey,
-        privateKey: data.privateKey,
-        apiKey: data.apiKey,
+        publicKey,
+        privateKey,
+        apiKey,
         createdAt: new Date().toISOString(),
       };
 

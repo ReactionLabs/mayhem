@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { storeWallet, getStoredWallets, getCurrentWallet, setCurrentWallet, type StoredWallet } from '@/lib/wallet-storage';
+import type { WalletContextState, ConnectionContextState } from '@jup-ag/wallet-adapter';
 
 interface GeneratedWallet {
   publicKey: string;
@@ -24,7 +25,11 @@ interface TradeResult {
   txHash: string;
 }
 
-export const useHarryAgent = () => {
+export const useHarryAgent = (
+  wallet?: Pick<WalletContextState, 'publicKey' | 'signTransaction'>,
+  connectionContext?: { connection?: ConnectionContextState['connection'] }
+) => {
+  const connection = connectionContext?.connection;
   const [isWalletGenerating, setIsWalletGenerating] = useState(false);
   const [isCoinCreating, setIsCoinCreating] = useState(false);
   const [isTrading, setIsTrading] = useState(false);
@@ -33,8 +38,9 @@ export const useHarryAgent = () => {
   const generateWallet = async (): Promise<GeneratedWallet> => {
     setIsWalletGenerating(true);
     try {
+      // Use GET method like the Clerk webhook (which works reliably)
       const response = await fetch('https://pumpportal.fun/api/create-wallet', {
-        method: 'POST',
+        method: 'GET',
         headers: {
           'Accept': 'application/json',
         },
@@ -42,15 +48,8 @@ export const useHarryAgent = () => {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('PumpPortal API error:', errorText);
-        // Fallback: provide demo wallet data when API is unavailable
-        console.warn('PumpPortal API unavailable - providing demo wallet for testing');
-        const demoId = Date.now().toString(36);
-        return {
-          publicKey: `DemoWallet${demoId}`,
-          privateKey: `DemoPrivateKey${demoId}`,
-          apiKey: `demo_api_key_${demoId}`,
-        };
+        console.error('PumpPortal API error:', response.status, errorText);
+        throw new Error(`Failed to create wallet: ${response.status} ${errorText.slice(0, 200)}`);
       }
 
       const data = await response.json();
@@ -58,21 +57,21 @@ export const useHarryAgent = () => {
       // Debug logging
       console.log('PumpPortal wallet response:', data);
 
-      // Validate response structure - check for different possible field names
-      if (!data.publicKey && !data.address) {
-        throw new Error('Missing public key in wallet data');
-      }
-      if (!data.privateKey && !data.secretKey) {
-        throw new Error('Missing private key in wallet data');
-      }
-      if (!data.apiKey) {
-        throw new Error('Missing API key in wallet data');
+      // PumpPortal API returns: { walletPublicKey, privateKey, apiKey } (note: walletPublicKey, not publicKey)
+      // Handle both field name variations
+      const publicKey = data.publicKey || data.walletPublicKey || data.address;
+      const privateKey = data.privateKey || data.secretKey;
+      const apiKey = data.apiKey || data.apiKey;
+
+      if (!publicKey || !privateKey || !apiKey) {
+        console.error('Invalid wallet response structure:', data);
+        throw new Error(`Invalid wallet data received from PumpPortal. Expected publicKey/walletPublicKey, privateKey, and apiKey. Got: ${JSON.stringify(Object.keys(data))}`);
       }
 
       const walletData = {
-        publicKey: data.publicKey || data.address,
-        privateKey: data.privateKey || data.secretKey,
-        apiKey: data.apiKey,
+        publicKey,
+        privateKey,
+        apiKey,
       };
 
       // Store the wallet for Harry to use
@@ -87,7 +86,10 @@ export const useHarryAgent = () => {
       return walletData;
     } catch (error) {
       console.error('Wallet generation error:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to generate wallet');
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : 'Failed to generate wallet. Please try again.';
+      toast.error(errorMessage);
       throw error;
     } finally {
       setIsWalletGenerating(false);
@@ -116,16 +118,34 @@ export const useHarryAgent = () => {
       if (!coinDetailsResponse.ok) {
         let errorText = await coinDetailsResponse.text();
         let errorMessage = `Failed to generate coin details (${coinDetailsResponse.status})`;
+        let setupRequired = false;
+        
         try {
           const errorJson = JSON.parse(errorText);
           errorMessage = errorJson.error || errorMessage;
+          setupRequired = errorJson.setupRequired || false;
         } catch {
           if (errorText.includes('<!DOCTYPE') || errorText.includes('<html')) {
-            errorMessage = 'OpenAI API key not configured. Please add OPENAI_API_KEY to your .env.local file.';
+            errorMessage = 'OpenAI API key not configured. Please add OPENAI_API_KEY or AIGATEWAYAPI to your .env file. Get your API key from: https://platform.openai.com/api-keys';
+            setupRequired = true;
           } else {
             errorMessage = errorText.slice(0, 200);
           }
         }
+        
+        // If setup is required, provide helpful error message
+        if (setupRequired) {
+          throw new Error(
+            `OpenAI API key not configured.\n\n` +
+            `**Setup Required:**\n` +
+            `To use AI-powered coin generation, add one of these to your .env file:\n` +
+            `- \`OPENAI_API_KEY\` (direct OpenAI API)\n` +
+            `- \`AIGATEWAYAPI\` (Vercel AI Gateway)\n\n` +
+            `Get your API key: https://platform.openai.com/api-keys\n\n` +
+            `💡 You can also create tokens manually without AI generation.`
+          );
+        }
+        
         throw new Error(errorMessage);
       }
 
@@ -226,14 +246,19 @@ export const useHarryAgent = () => {
         const mintKeypair = Keypair.generate();
         const mintAddress = mintKeypair.publicKey.toBase58();
 
-        // Create token via PumpPortal
+        // Check if user has connected wallet (required for signing and paying fees)
+        if (!wallet?.publicKey || !wallet?.signTransaction || !connection) {
+          throw new Error('Please connect your wallet (Phantom) to sign the transaction and pay fees. The wallet is required to sign the creation transaction and make the initial purchase.');
+        }
+
+        // Create token via PumpPortal - use connected wallet's public key
         const createResponse = await fetch('https://pumpportal.fun/api/trade-local', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            publicKey: currentWallet.publicKey,
+            publicKey: wallet.publicKey.toBase58(), // Use connected wallet, not stored wallet
             action: 'create',
             tokenMetadata: {
               name: tokenName,
@@ -255,42 +280,39 @@ export const useHarryAgent = () => {
           throw new Error(errorData.error || errorData.message || 'Failed to create token');
         }
 
-        const transactionData = await createResponse.json();
-        let txString: string;
-        if (Array.isArray(transactionData)) {
-          txString = transactionData[0];
-        } else if (typeof transactionData === 'string') {
-          txString = transactionData;
-        } else if (transactionData.transaction) {
-          txString = transactionData.transaction;
-        } else {
-          throw new Error('Invalid response format from PumpPortal');
-        }
-
-        // Sign and send
+        // Get transaction from PumpPortal (returns ArrayBuffer)
+        const txData = await createResponse.arrayBuffer();
         const { VersionedTransaction } = await import('@solana/web3.js');
-        const bs58 = (await import('bs58')).default;
-        const txBytes = bs58.decode(txString);
-        const tx = VersionedTransaction.deserialize(new Uint8Array(txBytes));
+        const tx = VersionedTransaction.deserialize(new Uint8Array(txData));
+
+        // Sign with mint keypair first
         tx.sign([mintKeypair]);
 
-        const signedTxString = bs58.encode(tx.serialize());
-        const tradeResponse = await fetch(`https://pumpportal.fun/api/trade?api-key=${currentWallet.apiKey}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            transaction: signedTxString,
-            mint: mintAddress,
-          }),
-        });
+        // Prompt user to sign with their connected wallet
+        toast.dismiss();
+        toast.loading('Please sign the transaction in your wallet...');
 
-        if (!tradeResponse.ok) {
-          const errorData = await tradeResponse.json().catch(() => ({}));
-          throw new Error(errorData.error || errorData.message || 'Failed to launch token');
+        let signedTx: VersionedTransaction;
+        try {
+          signedTx = await wallet.signTransaction(tx);
+        } catch (error) {
+          if (error instanceof Error && (error.message.includes('User rejected') || error.message.includes('cancelled'))) {
+            throw new Error('Transaction signature was cancelled. Please try again.');
+          }
+          throw error;
         }
 
-        const tradeData = await tradeResponse.json();
-        const signature = tradeData.signature || tradeData.txHash || 'pending';
+        // Send the fully signed transaction to RPC
+        toast.dismiss();
+        toast.loading('Sending transaction to network...');
+
+        const signature = await connection.sendRawTransaction(signedTx.serialize(), {
+          skipPreflight: false,
+          maxRetries: 3,
+        });
+
+        // Wait for confirmation
+        await connection.confirmTransaction(signature, 'confirmed');
 
         toast.success('Token launched successfully!');
         

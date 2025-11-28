@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
+import { useWallet, useConnection } from '@jup-ag/wallet-adapter';
 import {
   Bot,
   Send,
@@ -23,6 +24,8 @@ import {
   BarChart3
 } from 'lucide-react';
 import { useHarryAgent } from '@/hooks/useHarryAgent';
+import { MessageRenderer } from './HarryAgent/MessageRenderer';
+import { cn } from '@/lib/utils';
 
 interface HarryMessage {
   id: string;
@@ -41,6 +44,9 @@ export const HarryAgent: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const { publicKey, signTransaction } = useWallet();
+  const { connection } = useConnection();
+  
   const {
     generateWallet,
     createMemeCoin,
@@ -54,7 +60,7 @@ export const HarryAgent: React.FC = () => {
     isCoinCreating,
     isTrading,
     isGeneratingContent
-  } = useHarryAgent();
+  } = useHarryAgent({ publicKey, signTransaction }, { connection });
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -70,7 +76,7 @@ export const HarryAgent: React.FC = () => {
         {
           id: '1',
           role: 'harry',
-          content: "Hello! I'm Harry, your AI trading agent. I can help you:\n\n🎯 **Generate wallets** from PumpPortal (stored securely)\n🚀 **Create & launch meme coins** with AI-generated content and images\n📈 **Execute trades** automatically using stored wallets\n🎨 **Generate images & memes** for token promotion\n💬 **Create viral content** to post about your tokens\n\n**Current Wallet:** " + walletInfo + "\n\nWhat would you like me to help you with today?",
+          content: "Hello! I'm Harry, your AI trading agent. 👋\n\nI can help you with:\n\n🎯 **Generate wallets** - Create secure PumpPortal wallets\n🚀 **Create meme coins** - AI-powered token creation\n📈 **Execute trades** - Automated trading with stored wallets\n🎨 **Generate images** - Create memes and logos\n💬 **Create content** - Viral social media posts\n\n**Current Wallet:** " + walletInfo + "\n\nWhat would you like to do today?",
           timestamp: new Date(),
           type: 'text'
         }
@@ -214,13 +220,13 @@ export const HarryAgent: React.FC = () => {
         if (errorMessage.includes('OpenAI API key not configured')) {
           addMessage({
             role: 'harry',
-            content: `🤖 **AI Features Not Configured**\n\nTo use my advanced AI capabilities, you need to set up an OpenAI API key:\n\n1. Go to https://platform.openai.com/api-keys\n2. Create a new API key\n3. Add it to your \`.env.local\` file:\n\n\`\`\`\nOPENAI_API_KEY=your_api_key_here\n\`\`\`\n\nOnce configured, I'll be able to generate coins, images, and content! 🚀`,
+            content: `🤖 **AI Features Not Configured**\n\nTo use AI-powered coin generation, you need to set up an OpenAI API key:\n\n**Setup Steps:**\n1. Visit https://platform.openai.com/api-keys\n2. Create a new API key\n3. Add to your \`.env.local\` file:\n\n\`OPENAI_API_KEY=your_api_key_here\`\n\nOnce configured, I'll be able to generate coins, images, and content! 🚀`,
             type: 'text'
           });
         } else {
           addMessage({
             role: 'harry',
-            content: `Sorry, I encountered an error: ${errorMessage}`,
+            content: `❌ **Error**\n\nSorry, I encountered an error:\n\n\`${errorMessage}\`\n\nPlease try again or check your configuration.`,
             type: 'text'
           });
         }
@@ -236,10 +242,20 @@ export const HarryAgent: React.FC = () => {
     // Wallet generation
     if (cmd.includes('wallet') || cmd.includes('generate wallet')) {
       const wallet = await generateWallet();
+      
+      // Format the full wallet response for display
+      const walletResponse = {
+        walletPublicKey: wallet.publicKey,
+        privateKey: wallet.privateKey,
+        apiKey: wallet.apiKey,
+      };
+      
+      const formattedJson = JSON.stringify(walletResponse, null, 2);
+      
       return {
         message: wallet.publicKey.startsWith('DemoWallet')
-          ? `🧪 **Demo Wallet Generated!**\n\n**Public Key:** \`${wallet.publicKey}\`\n**Private Key:** \`${wallet.privateKey}\`\n**API Key:** \`${wallet.apiKey}\`\n\n⚠️ **This is demo data for testing.** Real wallet generation requires PumpPortal API connectivity.`
-          : `✅ **Wallet Generated Successfully!**\n\n**Public Key:** \`${wallet.publicKey}\`\n**Private Key:** \`${wallet.privateKey}\`\n**API Key:** \`${wallet.apiKey}\`\n\n⚠️ **Save these securely!** The private key and API key are shown only once.`,
+          ? `🧪 **Demo Wallet Generated!**\n\n⚠️ **This is demo data for testing.** Real wallet generation requires PumpPortal API connectivity.\n\n\`\`\`json\n${formattedJson}\n\`\`\``
+          : `✅ **Wallet Generated Successfully!**\n\nYour new wallet has been created and stored securely.\n\n**Wallet Details:**\n- **Public Key:** \`${wallet.publicKey}\`\n- **Private Key:** \`${wallet.privateKey}\`\n- **API Key:** \`${wallet.apiKey}\`\n\n⚠️ **Save these securely!** The private key and API key are shown only once.\n\n\`\`\`json\n${formattedJson}\n\`\`\`\n\n🔗 [View API Documentation](https://pumpportal.fun/other-endpoints/create-wallet)`,
         type: 'action',
         data: { action: 'wallet_generated', wallet }
       };
@@ -254,14 +270,14 @@ export const HarryAgent: React.FC = () => {
       if ('mintAddress' in coinData) {
         // Token was launched
         return {
-          message: `🚀 **Token Launched Successfully!**\n\n**Name:** ${coinData.name}\n**Symbol:** ${coinData.symbol}\n**Mint Address:** \`${coinData.mintAddress}\`\n**Transaction:** \`${coinData.transactionSignature}\`\n**Metadata URI:** \`${coinData.metadataUri}\`\n\n✅ Your token is now live on Pump.fun!`,
+          message: `🚀 **Token Launched Successfully!**\n\nYour meme coin is now live on Pump.fun!\n\n**Token Details:**\n- **Name:** ${coinData.name}\n- **Symbol:** ${coinData.symbol}\n- **Mint Address:** \`${coinData.mintAddress}\`\n- **Transaction:** \`${coinData.transactionSignature}\`\n\n✅ Ready to trade!`,
           type: 'action',
           data: { action: 'token_launched', token: coinData }
         };
       } else {
         // Coin created but not launched
         return {
-          message: `🎨 **Meme Coin Created!**\n\n**Name:** ${coinData.name}\n**Symbol:** ${coinData.symbol}\n**Description:** ${coinData.description}\n**Status:** ${coinData.contractAddress}\n\n**AI Generated Content:**\n${coinData.content}\n\n💡 Say "launch this token" or "deploy this coin" to launch it on Pump.fun!`,
+          message: `🎨 **Meme Coin Created!**\n\nI've generated a meme coin concept for you:\n\n**Token Details:**\n- **Name:** ${coinData.name}\n- **Symbol:** ${coinData.symbol}\n- **Description:** ${coinData.description}\n\n**AI Generated Content:**\n${coinData.content}\n\n💡 Say "launch this token" to deploy it on Pump.fun!`,
           type: 'action',
           data: { action: 'coin_created', coin: coinData }
         };
@@ -290,11 +306,11 @@ export const HarryAgent: React.FC = () => {
       }
 
       const tradeResult = await executeTrade(command, tokenMint);
-      return {
-        message: `📈 **Trade Executed!**\n\n**Action:** ${tradeResult.action}\n**Token:** \`${tradeResult.token}\`\n**Amount:** ${tradeResult.amount} SOL\n**Status:** ✅ Success\n**Tx Hash:** \`${tradeResult.txHash}\`\n\n**Next Steps:**\n- Monitor position in dashboard\n- Set stop-loss if needed\n- Track performance in portfolio`,
-        type: 'action',
-        data: { action: 'trade_executed', trade: tradeResult }
-      };
+        return {
+          message: `📈 **Trade Executed!**\n\n✅ Your trade was successful!\n\n**Trade Details:**\n- **Action:** ${tradeResult.action}\n- **Token:** \`${tradeResult.token}\`\n- **Amount:** ${tradeResult.amount} SOL\n- **Transaction:** \`${tradeResult.txHash}\`\n\n**Next Steps:**\n- Monitor your position in the dashboard\n- Set stop-loss to protect profits\n- Track performance in your portfolio`,
+          type: 'action',
+          data: { action: 'trade_executed', trade: tradeResult }
+        };
     }
 
     // Advanced trading actions
@@ -386,16 +402,16 @@ export const HarryAgent: React.FC = () => {
   return (
     <div className="max-w-4xl mx-auto p-4 space-y-6">
       {/* Header */}
-      <div className="text-center space-y-2">
-        <h1 className="text-3xl font-bold flex items-center justify-center gap-3">
-          <Bot className="w-10 h-10 text-purple-500" />
-          Harry - AI Trading Agent
+      <div className="text-center space-y-3 mb-6">
+        <div className="flex items-center justify-center gap-3">
+          <Bot className="w-8 h-8 text-purple-500" />
+          <h1 className="text-3xl font-bold">Harry - AI Trading Agent</h1>
           <Badge variant="outline" className="ml-2">
             <Zap className="w-3 h-3 mr-1" />
             Online
           </Badge>
-        </h1>
-        <p className="text-muted-foreground">
+        </div>
+        <p className="text-muted-foreground text-sm">
           Your intelligent trading companion for wallets, memes, and profits
         </p>
       </div>
@@ -403,14 +419,14 @@ export const HarryAgent: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Chat Interface */}
         <div className="lg:col-span-3">
-          <Card className="h-[600px] flex flex-col">
-            <CardHeader className="pb-3">
+          <Card className="h-[650px] flex flex-col shadow-lg">
+            <CardHeader className="pb-3 border-b">
               <CardTitle className="flex items-center gap-2 text-lg">
                 <Bot className="w-5 h-5 text-purple-500" />
                 Chat with Harry
               </CardTitle>
             </CardHeader>
-            <CardContent className="flex-1 flex flex-col p-4">
+            <CardContent className="flex-1 flex flex-col p-4 gap-4">
               {/* Messages */}
               <div className="flex-1 overflow-y-auto space-y-4 mb-4">
                 {messages.map((message) => (
@@ -419,15 +435,16 @@ export const HarryAgent: React.FC = () => {
                     className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
                   >
                     <div
-                      className={`max-w-[85%] p-4 rounded-lg shadow-sm ${
+                      className={cn(
+                        'max-w-[85%] p-4 rounded-lg shadow-sm',
                         message.role === 'user'
                           ? 'bg-purple-500 text-white'
                           : message.type === 'action'
-                          ? 'bg-green-50 border border-green-200 text-green-900 dark:text-green-100'
-                          : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100'
-                      }`}
+                          ? 'bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 text-green-900 dark:text-green-100'
+                          : 'bg-muted border border-border text-foreground'
+                      )}
                     >
-                      <div className="text-sm whitespace-pre-wrap">{message.content}</div>
+                      <MessageRenderer content={message.content} type={message.type} />
                       <div className="text-xs opacity-75 mt-2 flex items-center gap-2">
                         <span className="text-gray-600 dark:text-gray-400">{message.timestamp.toLocaleTimeString()}</span>
                         {message.actionData?.action && (
@@ -482,14 +499,14 @@ export const HarryAgent: React.FC = () => {
         {/* Quick Actions Sidebar */}
         <div className="space-y-4">
           {/* Status */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Target className="w-4 h-4" />
-                Harry's Status
+          <Card className="shadow-sm">
+            <CardHeader className="pb-3 border-b">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <Target className="w-4 h-4 text-purple-500" />
+                Status
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-2.5 pt-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs">Wallet Generator</span>
                 <Badge variant={isWalletGenerating ? "default" : "secondary"} className="text-xs">
@@ -518,26 +535,26 @@ export const HarryAgent: React.FC = () => {
           </Card>
 
           {/* Quick Actions */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Zap className="w-4 h-4" />
+          <Card className="shadow-sm">
+            <CardHeader className="pb-3 border-b">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <Zap className="w-4 h-4 text-purple-500" />
                 Quick Actions
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
+            <CardContent className="space-y-2 pt-3">
               {getQuickActions().map((action, index) => (
                 <Button
                   key={index}
                   variant="outline"
                   size="sm"
-                  className="w-full justify-start text-left h-auto py-3 px-3"
+                  className="w-full justify-start text-left h-auto py-2.5 px-3 hover:bg-purple-50 dark:hover:bg-purple-950/20 hover:border-purple-300 dark:hover:border-purple-700 transition-colors"
                   onClick={() => setCurrentInput(action.command)}
                   disabled={isLoading}
                 >
                   <div className="flex items-center gap-2">
-                    {action.icon}
-                    <span className="text-xs">{action.label}</span>
+                    <span className="text-purple-500">{action.icon}</span>
+                    <span className="text-xs font-medium">{action.label}</span>
                   </div>
                 </Button>
               ))}
@@ -545,33 +562,33 @@ export const HarryAgent: React.FC = () => {
           </Card>
 
           {/* Capabilities */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Sparkles className="w-4 h-4" />
-                Harry's Powers
+          <Card className="shadow-sm">
+            <CardHeader className="pb-3 border-b">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-purple-500" />
+                Capabilities
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="text-xs space-y-1">
-                <div className="flex items-center gap-2">
-                  <Wallet className="w-3 h-3 text-green-500" />
+            <CardContent className="space-y-2 pt-3">
+              <div className="text-xs space-y-2">
+                <div className="flex items-center gap-2 p-2 rounded-md hover:bg-muted/50 transition-colors">
+                  <Wallet className="w-4 h-4 text-green-500" />
                   <span>Wallet Generation</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Coins className="w-3 h-3 text-yellow-500" />
+                <div className="flex items-center gap-2 p-2 rounded-md hover:bg-muted/50 transition-colors">
+                  <Coins className="w-4 h-4 text-yellow-500" />
                   <span>Meme Coin Creation</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <TrendingUp className="w-3 h-3 text-blue-500" />
+                <div className="flex items-center gap-2 p-2 rounded-md hover:bg-muted/50 transition-colors">
+                  <TrendingUp className="w-4 h-4 text-blue-500" />
                   <span>Auto Trading</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Image className="w-3 h-3 text-purple-500" />
+                <div className="flex items-center gap-2 p-2 rounded-md hover:bg-muted/50 transition-colors">
+                  <Image className="w-4 h-4 text-purple-500" />
                   <span>AI Image Generation</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <MessageSquare className="w-3 h-3 text-pink-500" />
+                <div className="flex items-center gap-2 p-2 rounded-md hover:bg-muted/50 transition-colors">
+                  <MessageSquare className="w-4 h-4 text-pink-500" />
                   <span>Viral Content Creation</span>
                 </div>
               </div>

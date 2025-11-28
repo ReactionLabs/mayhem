@@ -128,8 +128,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       const walletData = await walletResponse.json();
 
-      if (!walletData.publicKey || !walletData.privateKey || !walletData.apiKey) {
-        throw new Error('Invalid wallet data received from PumpPortal');
+      // Handle PumpPortal API field name variations: walletPublicKey vs publicKey
+      const publicKey = walletData.publicKey || walletData.walletPublicKey || walletData.address;
+      const privateKey = walletData.privateKey || walletData.secretKey;
+      const apiKey = walletData.apiKey || walletData.api;
+
+      if (!publicKey || !privateKey || !apiKey) {
+        throw new Error(`Invalid wallet data received from PumpPortal. Got keys: ${JSON.stringify(Object.keys(walletData))}`);
       }
 
       // 3. Store wallet in database with encrypted private key and API key
@@ -137,9 +142,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         .from('wallets')
         .insert({
           user_id: user.id,
-          public_key: walletData.publicKey,
-          private_key_encrypted: encryptPrivateKey(walletData.privateKey),
-          api_key: encryptApiKey(walletData.apiKey), // Encrypt API key too
+          public_key: publicKey,
+          private_key_encrypted: encryptPrivateKey(privateKey),
+          api_key: encryptApiKey(apiKey), // Encrypt API key too
           is_primary: true,
           label: 'Main Wallet',
         });

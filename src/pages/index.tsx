@@ -350,7 +350,7 @@ export default function HomePage() {
                       </Link>
                     </Button>
                     <Button size="lg" variant="outline" className="text-lg px-8" asChild>
-                      <Link href="/create-pool">
+                      <Link href="/launchpad">
                         Launch Token
                         <Rocket className="ml-2 h-5 w-5" />
                       </Link>

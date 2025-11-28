@@ -1,11 +1,13 @@
 import { Connection, PublicKey, TransactionInstruction, SystemProgram, SYSVAR_RENT_PUBKEY } from '@solana/web3.js';
 import { TOKEN_PROGRAM_ID, getAssociatedTokenAddress } from '@solana/spl-token';
 import BN from 'bn.js';
+import { env } from '@/config/env';
 
 export const PUMP_FUN_PROGRAM_ID = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P');
 export const GLOBAL_ACCOUNT = new PublicKey('4wTV1YmiEkRvAtNtsSGPtUrqryQMe5hx1q7SPrqC9Ju');
 // Service fee recipient for Mayhem platform (all fees except blockchain fees)
-export const FEE_RECIPIENT = new PublicKey('Cdnz7Nf47SnVW6NGy3jSqeCv6Bhb6TkzDhppAzyxTm2Z');
+// Uses centralized community wallet address from env config
+export const FEE_RECIPIENT = new PublicKey(env.communityWallet);
 export const EVENT_AUTHORITY = new PublicKey('Ce6TQqeHC9p8KetsN6JsjHK7UTZk7nasjjnr7XxXp9F1');
 export const RENT = new PublicKey('SysvarRent111111111111111111111111111111111');
 

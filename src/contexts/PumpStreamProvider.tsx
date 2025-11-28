@@ -14,6 +14,7 @@ export type PumpTokenCreateEvent = {
   vTokensInBondingCurve: number;
   vSolInBondingCurve: number;
   marketCapSol: number;
+  pool?: 'pump' | 'bonk'; // Pool type (pump.fun or bonk)
 };
 
 export type PumpTradeEvent = {
@@ -29,13 +30,24 @@ export type PumpTradeEvent = {
   marketCapSol: number;
 };
 
+export type PumpMigrationEvent = {
+  txType: 'migration';
+  mint: string;
+  // Add other migration fields as needed
+};
+
 type PumpStreamContextType = {
   subscribeNewTokens: () => void;
   unsubscribeNewTokens: () => void;
+  subscribeMigrations: () => void;
+  unsubscribeMigrations: () => void;
   subscribeTokenTrades: (mints: string[]) => void;
   unsubscribeTokenTrades: (mints: string[]) => void;
+  subscribeAccountTrades: (accounts: string[]) => void;
+  unsubscribeAccountTrades: (accounts: string[]) => void;
   lastCreateEvent: PumpTokenCreateEvent | null;
   lastTradeEvent: PumpTradeEvent | null;
+  lastMigrationEvent: PumpMigrationEvent | null;
   isConnected: boolean;
 };
 
@@ -46,10 +58,13 @@ export const PumpStreamProvider = ({ children }: { children: React.ReactNode }) 
   const [isConnected, setIsConnected] = useState(false);
   const [lastCreateEvent, setLastCreateEvent] = useState<PumpTokenCreateEvent | null>(null);
   const [lastTradeEvent, setLastTradeEvent] = useState<PumpTradeEvent | null>(null);
+  const [lastMigrationEvent, setLastMigrationEvent] = useState<PumpMigrationEvent | null>(null);
   
   // Track subscriptions to resubscribe on reconnect
   const isSubscribedToNewTokens = useRef(false);
+  const isSubscribedToMigrations = useRef(false);
   const subscribedTokenMints = useRef<Set<string>>(new Set());
+  const subscribedAccounts = useRef<Set<string>>(new Set());
   const reconnectAttempts = useRef(0);
 
   const connect = useCallback(() => {
@@ -68,10 +83,19 @@ export const PumpStreamProvider = ({ children }: { children: React.ReactNode }) 
       if (isSubscribedToNewTokens.current) {
         socket.send(JSON.stringify({ method: 'subscribeNewToken' }));
       }
+      if (isSubscribedToMigrations.current) {
+        socket.send(JSON.stringify({ method: 'subscribeMigration' }));
+      }
       if (subscribedTokenMints.current.size > 0) {
         socket.send(JSON.stringify({ 
           method: 'subscribeTokenTrade', 
           keys: Array.from(subscribedTokenMints.current) 
+        }));
+      }
+      if (subscribedAccounts.current.size > 0) {
+        socket.send(JSON.stringify({ 
+          method: 'subscribeAccountTrade', 
+          keys: Array.from(subscribedAccounts.current) 
         }));
       }
     };
@@ -103,10 +127,11 @@ export const PumpStreamProvider = ({ children }: { children: React.ReactNode }) 
         
         // Handle different event types
         if (data.txType === 'create') {
-          // Check if it's an SPL token event (Pump tokens are SPL, but verify context if needed)
           setLastCreateEvent(data);
         } else if (data.txType === 'buy' || data.txType === 'sell') {
           setLastTradeEvent(data);
+        } else if (data.txType === 'migration') {
+          setLastMigrationEvent(data);
         }
       } catch (e) {
         if (process.env.NODE_ENV === 'development') {
@@ -149,6 +174,38 @@ export const PumpStreamProvider = ({ children }: { children: React.ReactNode }) 
 
   const unsubscribeTokenTrades = useCallback((mints: string[]) => {
     mints.forEach(mint => subscribedTokenMints.current.delete(mint));
+    if (ws.current?.readyState === WebSocket.OPEN && mints.length > 0) {
+      ws.current.send(JSON.stringify({ 
+        method: 'unsubscribeTokenTrade', 
+        keys: mints 
+      }));
+    }
+  }, []);
+
+  const subscribeMigrations = useCallback(() => {
+    isSubscribedToMigrations.current = true;
+    if (ws.current?.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({ method: 'subscribeMigration' }));
+    }
+  }, []);
+
+  const unsubscribeMigrations = useCallback(() => {
+    isSubscribedToMigrations.current = false;
+    // Note: API docs don't show unsubscribeMigration, but we track it
+  }, []);
+
+  const subscribeAccountTrades = useCallback((accounts: string[]) => {
+    accounts.forEach(account => subscribedAccounts.current.add(account));
+    if (ws.current?.readyState === WebSocket.OPEN && accounts.length > 0) {
+      ws.current.send(JSON.stringify({ 
+        method: 'subscribeAccountTrade', 
+        keys: accounts 
+      }));
+    }
+  }, []);
+
+  const unsubscribeAccountTrades = useCallback((accounts: string[]) => {
+    accounts.forEach(account => subscribedAccounts.current.delete(account));
   }, []);
 
   return (
@@ -156,10 +213,15 @@ export const PumpStreamProvider = ({ children }: { children: React.ReactNode }) 
       value={{
         subscribeNewTokens,
         unsubscribeNewTokens,
+        subscribeMigrations,
+        unsubscribeMigrations,
         subscribeTokenTrades,
         unsubscribeTokenTrades,
+        subscribeAccountTrades,
+        unsubscribeAccountTrades,
         lastCreateEvent,
         lastTradeEvent,
+        lastMigrationEvent,
         isConnected,
       }}
     >

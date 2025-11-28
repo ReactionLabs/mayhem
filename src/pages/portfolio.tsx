@@ -8,6 +8,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
 import { Wallet, CreditCard, History, Settings, Twitter, Copy, Plus, Trash2, ExternalLink, RefreshCw, Eye, EyeOff, TrendingUp } from 'lucide-react';
+import { RealTimePnLSummary } from '@/components/RealTimePnLSummary';
 import { shortenAddress } from '@/lib/utils';
 import { toast } from 'sonner';
 import { LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
@@ -170,21 +171,19 @@ export default function PortfolioPage() {
         console.log('PumpPortal wallet creation response:', data);
       }
 
-      // Validate response structure - check for different possible field names
-      if (!data.publicKey && !data.address) {
-        throw new Error('Missing public key in wallet data');
-      }
-      if (!data.privateKey && !data.secretKey) {
-        throw new Error('Missing private key in wallet data');
-      }
-      if (!data.apiKey) {
-        throw new Error('Missing API key in wallet data');
+      // Handle PumpPortal API field name variations: walletPublicKey vs publicKey
+      const publicKey = data.publicKey || data.walletPublicKey || data.address;
+      const privateKey = data.privateKey || data.secretKey;
+      const apiKey = data.apiKey || data.api;
+
+      if (!publicKey || !privateKey || !apiKey) {
+        throw new Error(`Invalid wallet data received from PumpPortal. Got keys: ${JSON.stringify(Object.keys(data))}`);
       }
       
       const newWallet: GeneratedWallet = {
-        publicKey: data.publicKey || data.address, // Handle both field names
-        privateKey: data.privateKey || data.secretKey, // Handle both field names
-        apiKey: data.apiKey,
+        publicKey,
+        privateKey,
+        apiKey,
         label: `Bot Wallet ${generatedWallets.length + 1}`,
         createdAt: new Date().toISOString(),
       };
@@ -270,21 +269,29 @@ export default function PortfolioPage() {
 
                   <Card>
                     <CardHeader className="pb-2">
-                      <CardDescription>Active Bot Wallets</CardDescription>
-                      <CardTitle>{generatedWallets.length}</CardTitle>
+                      <CardDescription>Total Portfolio Value</CardDescription>
+                      <CardTitle>
+                        {publicKey ? (
+                          <RealTimePnLSummary />
+                        ) : (
+                          "Not Connected"
+                        )}
+                      </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-xs text-muted-foreground">Managed personal wallets</p>
+                      <p className="text-xs text-muted-foreground">
+                        {publicKey ? "Real-time P&L tracking" : "Connect wallet to view"}
+                      </p>
                     </CardContent>
                   </Card>
 
                   <Card>
                     <CardHeader className="pb-2">
-                      <CardDescription>Tracked Wallets</CardDescription>
-                      <CardTitle>{trackedWallets.length}</CardTitle>
+                      <CardDescription>Active Bot Wallets</CardDescription>
+                      <CardTitle>{generatedWallets.length}</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-xs text-muted-foreground">Wallets being watched</p>
+                      <p className="text-xs text-muted-foreground">Managed personal wallets</p>
                     </CardContent>
                   </Card>
                 </div>

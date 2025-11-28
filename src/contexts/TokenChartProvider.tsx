@@ -121,6 +121,29 @@ export const TokenChartProvider: React.FC<PropsWithChildren> = ({ children }) =>
           onNewMarks(marks);
         }
       }
+      
+      // Debug: Log when user trades should appear but don't
+      if (process.env.NODE_ENV === 'development' && showUserTrades && userAddress) {
+        const userSwapsInAllTxs = msg.data.filter(
+          (tx) => tx.asset === baseAsset.id && tx.traderAddress === userAddress
+        );
+        if (userSwapsInAllTxs.length > 0) {
+          const filteredUserSwaps = userSwapsInAllTxs.filter(
+            (tx) => !tx.isMev && tx.usdVolume >= SMALL_TRADE_VALUE
+          );
+          if (filteredUserSwaps.length === 0 && userSwapsInAllTxs.length > 0) {
+            console.warn('User trades filtered out:', {
+              total: userSwapsInAllTxs.length,
+              reasons: {
+                isMev: userSwapsInAllTxs.filter((tx) => tx.isMev).length,
+                lowVolume: userSwapsInAllTxs.filter((tx) => tx.usdVolume < SMALL_TRADE_VALUE).length,
+                minVolume: SMALL_TRADE_VALUE,
+              },
+              userAddress,
+            });
+          }
+        }
+      }
 
       const mostRecentBarKey = baseAsset.id;
       const recentBar = resolutionToMostRecentBar[mostRecentBarKey];

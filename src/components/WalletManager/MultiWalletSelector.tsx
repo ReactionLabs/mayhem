@@ -284,12 +284,21 @@ const WalletManagerDialog: React.FC = () => {
         throw new Error('Failed to generate wallet');
       }
       const data = await response.json();
+      // Handle PumpPortal API field name variations: walletPublicKey vs publicKey
+      const publicKey = data.publicKey || data.walletPublicKey || data.address;
+      const privateKey = data.privateKey || data.secretKey;
+      const apiKey = data.apiKey || data.api;
+
+      if (!publicKey || !privateKey || !apiKey) {
+        throw new Error(`Invalid wallet data received from PumpPortal. Got keys: ${JSON.stringify(Object.keys(data))}`);
+      }
+
       await addWallet({
         label: newWalletLabel || 'Lightning Wallet',
-        address: data.publicKey,
+        address: publicKey,
         type: 'generated',
-        apiKey: data.apiKey,
-        privateKey: data.privateKey,
+        apiKey,
+        privateKey,
       });
       toast.success('Bot wallet generated and saved');
       setNewWalletLabel('');

@@ -276,7 +276,7 @@ export default function MyTokensPage() {
               <p className="text-muted-foreground mb-4">
                 You haven&apos;t created any tokens yet
               </p>
-              <Link href="/create-pool">
+              <Link href="/launchpad">
                 <Button>Create Your First Token</Button>
               </Link>
             </CardContent>

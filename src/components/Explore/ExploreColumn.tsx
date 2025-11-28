@@ -85,6 +85,9 @@ export const ExploreColumn: React.FC<ExploreColumnProps> = ({ tab, onSelectToken
             className="pl-9 bg-neutral-900/50 border-neutral-800 h-9 text-xs"
           />
         </div>
+        
+        {/* Advanced Filters - Pass filters to container */}
+        {/* Filters are applied in TokenCardListContainer */}
       </div>
 
       {/* List */}
@@ -117,7 +120,7 @@ type TokenCardListContainerProps = {
 const timeframe = EXPLORE_FIXED_TIMEFRAME;
 
 const TokenCardListContainer: React.FC<TokenCardListContainerProps> = memo(
-  ({ tab, request, isPaused, setIsPaused, searchTerm, excludedSources, onSelectToken }) => {
+  ({ tab, request, isPaused, setIsPaused, searchTerm, excludedSources, onSelectToken, filters: externalFilters }) => {
     const queryClient = useQueryClient();
     const breakpoint = useBreakpoint();
     const isMobile = breakpoint === 'md' || breakpoint === 'sm' || breakpoint === 'xs';
@@ -127,15 +130,27 @@ const TokenCardListContainer: React.FC<TokenCardListContainerProps> = memo(
     // Original Meteora Data - DISABLED for now as per user request
     // const { data: currentData, status } = useExploreGemsTokenList((data) => data[tab]);
 
-    // Pump.fun Data Integration
-    const { subscribeNewTokens, lastCreateEvent, lastTradeEvent, isConnected, subscribeTokenTrades } = usePumpStream();
+    // PumpPortal WebSocket Integration - Real-time data from Pump.fun & Bonk
+    // Reference: https://pumpportal.fun/data-api/real-time
+    const { 
+      subscribeNewTokens, 
+      subscribeMigrations,
+      lastCreateEvent, 
+      lastTradeEvent,
+      lastMigrationEvent,
+      isConnected, 
+      subscribeTokenTrades 
+    } = usePumpStream();
     const [pumpPools, setPumpPools] = useState<Pool[]>([]);
+    // Use external filters if provided, otherwise use searchTerm for basic filtering
+    const filters = externalFilters || {};
 
     useEffect(() => {
       if (isConnected) {
-        subscribeNewTokens();
+        subscribeNewTokens(); // Subscribe to Pump.fun new tokens
+        subscribeMigrations(); // Subscribe to Bonk migration events
       }
-    }, [isConnected, subscribeNewTokens]);
+    }, [isConnected, subscribeNewTokens, subscribeMigrations]);
 
     const resolveMetadataImage = useCallback(async (uri: string | undefined) => {
       if (!uri) return { image: null, socials: null };
@@ -163,16 +178,38 @@ const TokenCardListContainer: React.FC<TokenCardListContainerProps> = memo(
       }
     }, []);
 
-    // Handle New Token Creation
+    // Handle New Token Creation (Pump.fun & Bonk)
     useEffect(() => {
       if (lastCreateEvent) {
+        // Apply filters before adding token
+        const mcapSol = lastCreateEvent.marketCapSol;
+        const initialBuy = lastCreateEvent.initialBuy;
+        const bondingCurve = (mcapSol / 85) * 100; // Approximate bonding curve progress
+        
+        // Filter checks
+        if (filters.minMarketCap && mcapSol < filters.minMarketCap) return;
+        if (filters.maxMarketCap && mcapSol > filters.maxMarketCap) return;
+        if (filters.minInitialBuy && initialBuy < filters.minInitialBuy) return;
+        if (filters.pool && filters.pool !== 'all' && lastCreateEvent.pool !== filters.pool) return;
+        if (filters.minBondingCurve && bondingCurve < filters.minBondingCurve) return;
+        if (filters.maxBondingCurve && bondingCurve > filters.maxBondingCurve) return;
+        if (filters.searchTerm) {
+          const term = filters.searchTerm.toLowerCase();
+          if (!lastCreateEvent.name.toLowerCase().includes(term) && 
+              !lastCreateEvent.symbol.toLowerCase().includes(term) &&
+              !lastCreateEvent.mint.toLowerCase().includes(term)) {
+            return;
+          }
+        }
+
+        const poolType = lastCreateEvent.pool || 'pump';
         const newPool: Pool = {
           id: lastCreateEvent.mint,
           chain: 'solana',
-          dex: 'pump.fun',
-          type: 'pump',
+          dex: poolType === 'bonk' ? 'bonk.fun' : 'pump.fun',
+          type: poolType,
           createdAt: new Date().toISOString(),
-          bondingCurve: 0,
+          bondingCurve: bondingCurve,
           volume24h: 0,
           isUnreliable: false,
           updatedAt: new Date().toISOString(),
@@ -186,7 +223,7 @@ const TokenCardListContainer: React.FC<TokenCardListContainerProps> = memo(
             mcap: lastCreateEvent.marketCapSol * 200, 
             liquidity: lastCreateEvent.vSolInBondingCurve * 200,
             usdPrice: 0,
-            launchpad: Launchpad.PUMPFUN,
+            launchpad: poolType === 'bonk' ? Launchpad.LETSBONKFUN : Launchpad.PUMPFUN,
           },
           streamed: true,
         };
@@ -227,7 +264,25 @@ const TokenCardListContainer: React.FC<TokenCardListContainerProps> = memo(
           }
         })();
       }
-    }, [lastCreateEvent, subscribeTokenTrades, resolveMetadataImage]);
+    }, [lastCreateEvent, subscribeTokenTrades, resolveMetadataImage, filters]);
+
+    // Handle Migration Events (Bonk tokens graduating)
+    useEffect(() => {
+      if (lastMigrationEvent) {
+        // Update pool status when token migrates
+        setPumpPools((prev) =>
+          prev.map((pool) =>
+            pool.id === lastMigrationEvent.mint
+              ? {
+                  ...pool,
+                  updatedAt: new Date().toISOString(),
+                  // Mark as migrated/graduated
+                }
+              : pool
+          )
+        );
+      }
+    }, [lastMigrationEvent]);
 
     // Handle Trades (Updates)
     useEffect(() => {

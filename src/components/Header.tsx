@@ -22,6 +22,8 @@ import { debounce } from '@/lib/debounce';
 import { useNonceAuth } from '@/hooks/useNonceAuth';
 import { Zap, CheckCircle2 } from 'lucide-react';
 import { LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { env } from '@/config/env';
+import { PnLDisplay } from './PnLDisplay';
 
 /**
  * Header Component
@@ -251,6 +253,9 @@ export const Header = () => {
 
       {/* Navigation and Actions */}
       <div className="flex items-center gap-3 shrink-0">
+        {/* Real-time PnL Display */}
+        {walletAddress && <PnLDisplay />}
+        
         {/* Wallet Balance Display (if wallet connected) */}
         {walletAddress && (
           <div
@@ -284,7 +289,7 @@ export const Header = () => {
 
         {/* Launch Token Button - Prominent */}
         <Button size="sm" className="hidden md:flex items-center gap-2 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground shadow-lg" asChild>
-          <Link href="/create-pool">
+          <Link href="/launchpad">
             <Rocket className="w-4 h-4" />
             Launch Token
           </Link>
@@ -324,8 +329,7 @@ export const Header = () => {
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => {
                 // Show community wallet info
-                const wallet = 'Cdnz7Nf47SnVW6NGy3jSqeCv6Bhb6TkzDhppAzyxTm2Z';
-                navigator.clipboard.writeText(wallet);
+                navigator.clipboard.writeText(env.communityWallet);
                 toast.success('Community wallet address copied!');
               }}>
                 <Coins className="mr-2 h-4 w-4" />
