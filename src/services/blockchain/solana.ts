@@ -17,8 +17,47 @@ class SolanaService {
 
   /**
    * Get SOL balance for an address
+   * Uses API route if running in browser to avoid CORS issues
    */
   async getBalance(address: string, useFallback = false): Promise<number> {
+    // If running in browser, use API route to avoid CORS issues
+    if (typeof window !== 'undefined') {
+      try {
+        const response = await fetch('/api/balance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ address }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        if (data.success && typeof data.balance === 'number') {
+          return data.balance;
+        }
+        throw new Error('Invalid response from balance API');
+      } catch (error: any) {
+        const errorMessage = error?.message || String(error || '');
+        
+        // If it's a network error, return -1 to indicate unavailable
+        if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
+          if (process.env.NODE_ENV === 'development') {
+            console.warn(`Network error fetching balance for ${address}, returning unavailable`);
+          }
+          return -1;
+        }
+        
+        if (process.env.NODE_ENV === 'development') {
+          console.error(`Failed to fetch balance via API for ${address}:`, errorMessage);
+        }
+        return -1;
+      }
+    }
+
+    // Server-side: use direct RPC connection
     const conn = useFallback ? this.fallbackConnection : this.connection;
     
     try {

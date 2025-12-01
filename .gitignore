@@ -141,3 +141,4 @@ meteora-invent/
 
 # Token analytics CSV (keep in git for analysis)
 # data/token-analytics.csv
+.env*.local

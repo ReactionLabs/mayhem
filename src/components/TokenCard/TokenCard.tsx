@@ -20,6 +20,9 @@ type TokenCardProps = {
 
 export const TokenCard: React.FC<TokenCardProps> = memo(({ pool, timeframe, rowRef }) => {
   const stats = pool.baseAsset[`stats${timeframe}`];
+  const price = pool.baseAsset.usdPrice;
+  const priceChange = stats?.priceChange;
+  const liquidity = pool.baseAsset.liquidity;
 
   // We assume the parent container handles the click via onClick prop on the list item
   // So we remove the absolute positioned Link that was hijacking clicks.
@@ -77,14 +80,62 @@ export const TokenCard: React.FC<TokenCardProps> = memo(({ pool, timeframe, rowR
           </div>
         </div>
 
-        {/* Bottom Row: Age, Metrics */}
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
+        {/* Bottom Row: Age, Price, Volume, Mcap */}
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2 text-[0.7rem] text-muted-foreground">
             <TokenAge className="text-[0.7rem] text-muted-foreground" date={pool.createdAt} />
+            <span className="inline-flex items-center gap-1 rounded-full bg-neutral-900/60 px-2 py-0.5 text-[0.65rem] uppercase tracking-wide">
+              <span className="text-neutral-500">
+                {pool.dex || 'pump.fun'}
+              </span>
+              <span className="h-3 w-px bg-neutral-700" />
+              <span className="text-neutral-400">
+                {pool.baseAsset.launchpad ?? 'Launchpad'}
+              </span>
+            </span>
           </div>
 
-          {/* Metrics */}
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.7rem]">
+            {typeof price === 'number' && price > 0 && (
+              <div className="flex items-center gap-1">
+                <span className="text-neutral-500">Price</span>
+                <span className="font-semibold">
+                  $
+                  {price < 0.01
+                    ? price.toExponential(2)
+                    : price.toFixed(6)}
+                </span>
+              </div>
+            )}
+
+            {typeof priceChange === 'number' && (
+              <div className="flex items-center gap-1">
+                <span className="text-neutral-500">24h</span>
+                <span
+                  className={cn(
+                    'font-semibold',
+                    priceChange > 0
+                      ? 'text-emerald-400'
+                      : priceChange < 0
+                        ? 'text-red-400'
+                        : 'text-neutral-400'
+                  )}
+                >
+                  {priceChange > 0 ? '+' : ''}
+                  {priceChange.toFixed(2)}%
+                </span>
+              </div>
+            )}
+
+            {typeof liquidity === 'number' && liquidity > 0 && (
+              <div className="flex items-center gap-1">
+                <span className="text-neutral-500">Liq.</span>
+                <span className="font-semibold">
+                  ${(liquidity / 1_000_000).toFixed(2)}M
+                </span>
+              </div>
+            )}
+
             <TokenCardVolumeMetric buyVolume={stats?.buyVolume} sellVolume={stats?.sellVolume} />
             <TokenCardMcapMetric mcap={pool.baseAsset.mcap} />
           </div>

@@ -1,4 +1,4 @@
-import * as z from 'superstruct';
+import { z } from 'zod';
 
 export const ExploreTab = {
   NEW: 'recent',
@@ -124,9 +124,9 @@ export const Launchpad = {
 export type Launchpad = (typeof Launchpad)[keyof typeof Launchpad];
 
 export const TokenListFiltersSchema = z.object({
-  partnerConfigs: z.optional(z.array(z.string())),
+  partnerConfigs: z.array(z.string()).optional(),
 });
-export type TokenListFilters = z.Infer<typeof TokenListFiltersSchema>;
+export type TokenListFilters = z.infer<typeof TokenListFiltersSchema>;
 
 type TokenListFilter = keyof TokenListFilters;
 

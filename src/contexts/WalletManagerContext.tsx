@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { useWallet } from '@jup-ag/wallet-adapter';
+import { solanaService } from '@/services/blockchain';
 // Clerk removed - wallet-only authentication
 
 export type WalletGroup = {
@@ -83,11 +84,10 @@ export function WalletManagerProvider({ children }: { children: React.ReactNode 
     // Immediately fetch balance for newly connected wallet
     const fetchConnectedBalance = async () => {
       try {
-        const { solanaService } = await import('@/services/blockchain');
         if (solanaService.isValidAddress(address)) {
           const balance = await solanaService.getBalance(address);
           if (typeof balance === 'number' && balance >= 0) {
-            setConnectedWallet(prev => prev ? { ...prev, balance } : prev);
+            setConnectedWallet(prev => (prev ? { ...prev, balance } : prev));
           }
         }
       } catch (error) {
@@ -129,9 +129,6 @@ export function WalletManagerProvider({ children }: { children: React.ReactNode 
       return;
     }
 
-    // Use the new service layer for balance fetching
-    const { solanaService } = await import('@/services/blockchain');
-    
     const balancePromises = validWallets.map(async (wallet) => {
       try {
         // Validate address before fetching
